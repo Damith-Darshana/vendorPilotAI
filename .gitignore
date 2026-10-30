@@ -1,0 +1,10 @@
+# Environment
+.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Data
+data/sample_pdfs/*.pdf
+!data/sample_pdfs/.gitkeep
