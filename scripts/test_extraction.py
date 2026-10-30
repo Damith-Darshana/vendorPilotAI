@@ -20,7 +20,7 @@ for file_path in test_files:
     print('='*60)
     
     try:
-        result = extract_document(file_path)
+        result = extract_document(file_path,use_fallback=True)
         print(f"Document Type: {result.document_type}")
         print(f"Company Name: {result.company_name.value}")
         print(f"  Evidence: page {result.company_name.evidence.page_number if result.company_name.evidence else 'N/A'}")

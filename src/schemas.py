@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import List,Optional,Literal
+from enum import Enum
 
 # ---------------------------------------------------------
 # 1. AI EXTRACTION SCHEMAS (What the LLM outputs)
@@ -41,3 +42,18 @@ class GoldenCase(BaseModel):
    supplier_name: str
    description: str = Field(description="Brief explanation of what this test case checks")
    documents: List[GoldenDocument]
+
+
+class FindingSeverity(str,Enum):
+  CRITICAL = "critical"
+  HIGH = "high"
+  MEDIUM = "medium"
+  LOW = "low"
+
+class Finding(BaseModel):
+  finding_id: str = Field(description = "Unique ID for this finding")
+  field_name: str = Field(description="Which field triggered this, e.g., 'expiry_date")
+  severity:FindingSeverity
+  message:str = Field(description="Human-readable explanation")
+  rule_id:str = Field(description = "Which determistic rule fired, e.g., 'EXPIRED_DATE'")
+

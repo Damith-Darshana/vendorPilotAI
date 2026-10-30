@@ -20,7 +20,7 @@ PRIMARY_PROVIDER = "google_genai"
 PRIMARY_MODEL = "gemini-3.8-flash"
 
 FALLBACK_PROVIDER = "groq"
-FALLBACK_MODEL = "llama-3.3-70b-versatile"
+FALLBACK_MODEL = "qwen/qwen3.8-27b"
 
 def get_extraction_model(use_fallback: bool = False):
     """
@@ -80,13 +80,13 @@ def extract_document(file_path: str, use_fallback: bool = False) -> ExtractedDoc
     Note: For simplicity, we're reading PDF text via a basic method.
     In production, use a proper PDF loader (PyPDFLoader from langchain_community).
     """
-    from fpdf import FPDF  # We'll use a simple text extraction for now
-    
+    # from fpdf import FPDF  # We'll use a simple text extraction for now
+    import pymupdf
     # For now, read the PDF as text (fpdf2-generated PDFs are simple)
     # In the next iteration, we'll add proper PDF parsing
-    import fitz  # PyMuPDF - we'll add this to requirements
+      # PyMuPDF - we'll add this to requirements
     
-    doc = fitz.open(file_path)
+    doc = pymupdf.open(file_path)
     full_text = ""
     for page_num, page in enumerate(doc, start=1):
         text = page.get_text()
