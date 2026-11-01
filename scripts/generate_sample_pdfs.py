@@ -49,7 +49,7 @@ create_pdf(
         "Insured Name: Northstar Industrial Supplies Ltd.",
         "Policy Number: POL-9921-AA",
         "Effective Date: February 1, 2024",
-        "Expiration Date: February 1, 2026",
+        "Expiration Date: February 1, 2027",
         "Coverage Limit: $2,000,000 USD",
         "This certificate confirms active general liability coverage."
     ]
@@ -63,7 +63,7 @@ create_pdf(
         "Insured Name: Apex Logistics Inc.",
         "Policy Number: POL-7712-BB",
         "Effective Date: January 1, 2022",
-        "Expiration Date: January 1, 2024",
+        "Expiration Date: Octobor 30, 2026",
         "Coverage Limit: $1,000,000 USD",
         "WARNING: This policy has expired."
     ]

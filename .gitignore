@@ -4,7 +4,7 @@
 venv/
 __pycache__/
 *.pyc
-
+*.docx
 # Data
 data/sample_pdfs/*.pdf
 !data/sample_pdfs/.gitkeep
