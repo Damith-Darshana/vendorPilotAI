@@ -8,3 +8,5 @@ __pycache__/
 # Data
 data/sample_pdfs/*.pdf
 !data/sample_pdfs/.gitkeep
+.vscode
+.gitignore
