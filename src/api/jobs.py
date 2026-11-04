@@ -6,6 +6,8 @@ from typing import Optional
 from src.db.database import SessionLocal
 from src.db.models import Job, Case, CaseStatus
 from src.graph.workflow import build_graph
+from langgraph.types import Command
+
 
 # In-memory registry of running jobs and their SSE queues
 # Key: job_id, Value: asyncio.Queue for SSE frames
@@ -93,3 +95,71 @@ def create_job(case_id: str, file_path: str, checkpointer) -> str:
 
 def get_job_queue(job_id: str) -> Optional[asyncio.Queue]:
     return _job_queues.get(job_id)
+
+
+async def resume_job(job_id:str, case_id:str,decision:str,checkpointer):
+    """
+    Resume a paused graph with a human decision.
+    Emits SSE events as the graph continues to completion.
+    """
+
+    queue = _job_queues.get(job_id)
+    if not queue:
+        # Queue was closed create a new one for this resume
+        queue = asyncio.Queue()
+        _job_queues[job_id] = queue
+
+    db = SessionLocal()
+
+    try:
+        job = db.query(Job).filter(Job.id==job_id).first()
+        if not job:
+            await queue.put({"event":"error","data":{"message":"Job not found"}})
+            await queue.put(None)
+            return
+
+        job.status = "running"
+        db.commit()
+
+        await queue.put({"event":"resuming","data":{"case_id":case_id,"decision":decision}})
+        app = build_graph(checkpointer= checkpointer)
+        config = {"configurable":{"thread_id":case_id}}
+
+        try:
+            result = await app.ainvoke(Command(resume=decision),config = config)
+
+            final_status = result.get("final_status","unknown")
+            await queue.put({
+                "event":"job_completed",
+                "data":{"final_status":final_status,"case_id":case_id}
+            })
+            job.status = "completed"
+            db.commit()
+
+
+        except Exception as e:
+            job.status = "failed"
+            job.error_message = str(e)
+            db.commit()
+            await queue.put({"event":"error","data":{"mesage":str(e)}})
+
+    finally :
+        db.close()
+        await queue.put(None)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -22,23 +22,52 @@ def extract_node(state: VendorPilotState) -> dict:
   except Exception as e:
     return {"error":str(e)}
 
-def validate_node(state: VendorPilotState) -> dict:
-  """Node 2: Run deterministic validation"""
-  if state.get("error"):
-    return {}
-  findings = validate_document(state["extracted_doc"])
-  findings_dicts = [
-    {
-      "finding_id":f.finding_id,
-      "field_name":f.field_name,
-      "severity":f.severity.value,
-      "message":f.message,
-      "rule_id":f.rule_id,
+from src.db.database import SessionLocal
+from src.db.models import Finding as FindingModel
 
-    }
-    for f in findings
-  ]
-  return {"findings":findings_dicts}
+
+def validate_node(state: VendorPilotState) -> dict:
+    """Node 2: Run deterministic validation and persist findings."""
+    if state.get("error"):
+        return {}
+
+    findings = validate_document(state["extracted_doc"])
+
+    # Convert to dicts for state
+    findings_dicts = [
+        {
+            "finding_id": f.finding_id,
+            "field_name": f.field_name,
+            "severity": f.severity.value,
+            "message": f.message,
+            "rule_id": f.rule_id,
+        }
+        for f in findings
+    ]
+
+    # Persist findings to PostgreSQL
+    db = SessionLocal()
+    try:
+        for f_dict in findings_dicts:
+            db_finding = FindingModel(
+                id=f_dict["finding_id"],
+                case_id=state["case_id"],
+                field_name=f_dict["field_name"],
+                severity=f_dict["severity"],
+                message=f_dict["message"],
+                rule_id=f_dict["rule_id"],
+            )
+            db.add(db_finding)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return {"error": f"Failed to persist findings: {str(e)}"}
+    finally:
+        db.close()
+
+    return {"findings": findings_dicts}
+
+
 
 def route_decision(state:VendorPilotState)->str:
   """

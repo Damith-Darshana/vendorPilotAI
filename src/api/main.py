@@ -7,13 +7,15 @@ from fastapi.responses import StreamingResponse
 from sse_starlette.sse import EventSourceResponse
 
 from src.api.schemas import CaseCreateResponse, JobStatusResponse
-from src.api.jobs import create_job, get_job_queue
+from src.api.jobs import create_job, get_job_queue, resume_job
 from src.db.database import SessionLocal
-from src.db.models import Case, Job
+from src.db.models import Case, Job, Finding
 
 from contextlib import asynccontextmanager
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from src.config import settings
+from pydantic import BaseModel
+from typing import Optional
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -24,6 +26,21 @@ async def lifespan(app: FastAPI):
         yield
 
 app = FastAPI(title="VendorPilot AI API", lifespan=lifespan)
+
+class DecisionRequest(BaseModel):
+    decision: str  # "approved" or "rejected"
+    reviewer_notes: Optional[str] = None
+
+class CaseDetailResponse(BaseModel):
+    case_id: str
+    supplier_name: str
+    status: str
+    findings: list
+    created_at: str
+
+
+
+
 
 UPLOAD_DIR = Path("data/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -103,3 +120,57 @@ async def stream_job(job_id: str):
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.post("/api/v1/cases/{case_id}/decision")
+async def submit_decision(case_id: str, body: DecisionRequest):
+    """
+    Submit a human decision for a paused case and resume the graph.
+    """
+    if body.decision not in ("approved", "rejected"):
+        raise HTTPException(status_code=400, detail="Decision must be 'approved' or 'rejected'")
+
+    db = SessionLocal()
+    try:
+        # Find the most recent job for this case
+        job = db.query(Job).filter(Job.case_id == case_id).order_by(Job.created_at.desc()).first()
+        if not job:
+            raise HTTPException(status_code=404, detail="No job found for this case")
+
+        if job.status != "paused":
+            raise HTTPException(status_code=400, detail=f"Job is not paused (current: {job.status})")
+
+        job_id = job.id
+    finally:
+        db.close()
+
+    # Start resume as background task
+    asyncio.create_task(resume_job(job_id, case_id, body.decision, app.state.checkpointer))
+
+    return {"status": "resuming", "job_id": job_id, "case_id": case_id}
+
+
+@app.get("/api/v1/cases/{case_id}", response_model=CaseDetailResponse)
+async def get_case(case_id: str):
+    """Retrieve case details including findings."""
+    db = SessionLocal()
+    try:
+        case = db.query(Case).filter(Case.id == case_id).first()
+        if not case:
+            raise HTTPException(status_code=404, detail="Case not found")
+
+        findings = db.query(Finding).filter(Finding.case_id == case_id).all()
+        findings_list = [
+            {"id": f.id, "field_name": f.field_name, "severity": f.severity, "message": f.message, "rule_id": f.rule_id}
+            for f in findings
+        ]
+
+        return CaseDetailResponse(
+            case_id=case.id,
+            supplier_name=case.supplier_name,
+            status=case.status.value if hasattr(case.status, "value") else case.status,
+            findings=findings_list,
+            created_at=case.created_at.isoformat(),
+        )
+    finally:
+        db.close()
