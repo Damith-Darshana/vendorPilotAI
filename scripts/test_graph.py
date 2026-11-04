@@ -1,10 +1,12 @@
 import sys
 from pathlib import Path
 from langgraph.types import Command
+from langgraph.checkpoint.memory import InMemorySaver
 sys.path.append(str(Path(__file__).parent.parent))
 
 from src.graph.workflow import build_graph
-app = build_graph()
+checkpointer = InMemorySaver()
+app = build_graph(checkpointer = checkpointer)
 
 print("=" * 60)
 print("Test 1: Clean registration → expect auto_approved")

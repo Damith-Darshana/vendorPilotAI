@@ -1,6 +1,8 @@
 from langgraph.graph import StateGraph, START, END
+from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import interrupt,Command
+from src.config import settings
 
 from src.graph.state import VendorPilotState
 from src.extractors.document_extractor import extract_document
@@ -25,7 +27,18 @@ def validate_node(state: VendorPilotState) -> dict:
   if state.get("error"):
     return {}
   findings = validate_document(state["extracted_doc"])
-  return {"findings":findings}
+  findings_dicts = [
+    {
+      "finding_id":f.finding_id,
+      "field_name":f.field_name,
+      "severity":f.severity.value,
+      "message":f.message,
+      "rule_id":f.rule_id,
+
+    }
+    for f in findings
+  ]
+  return {"findings":findings_dicts}
 
 def route_decision(state:VendorPilotState)->str:
   """
@@ -38,17 +51,18 @@ def route_decision(state:VendorPilotState)->str:
   if state.get("error"):
     return "human_review"
   findings = state.get("findings",[])
-  has_critical = any(f.severity == FindingSeverity.CRITICAL for f in findings)
-
-  if has_critical:
-    return "human_review"
-
-  return "auto_approve"
+  has_critical = any(f.get("severity") == "critical" for f in findings)
+  return "human_review" if has_critical else "auto_approve"
 
 def auto_approve_node(state:VendorPilotState)->dict:
   """No critical issues; auto-complete"""
 
   return {"final_status":"auto_approved"}
+
+
+
+from src.db.database import SessionLocal
+from src.db.models import AuditLog,Case,CaseStatus
 
 def human_review_node(state: VendorPilotState) ->dict:
   """
@@ -57,12 +71,37 @@ def human_review_node(state: VendorPilotState) ->dict:
   """
   decision = interrupt({
     "message":"Case requires human review",
-    "findings":[
-      {"severity":f.severity.value, "rule":f.rule_id,"message":f.message} for f in state.get("findings",[])
-
-    ],
+    "findings": state.get("findings",[]),
     "case_id":state.get("case_id"),
   })
+  db = SessionLocal()
+  try:
+    case_id = state.get("case_id")
+    case = db.query(Case).filter(Case.id == case_id).first()
+    if not case:
+      case = Case(id=case_id,supplier_name="unknown",status=CaseStatus.QUEUED)
+      db.add(case)
+      db.flush()
+
+    log = AuditLog(
+      case_id = case_id,
+      actor = "human_reviewer",
+      action = f"human_{decision}",
+      details = {"findings_count":len(state.get("findings",[]))},
+
+    )
+    db.add(log)
+
+    #update case status
+    case.status = CaseStatus.APPROVED if decision =="approved" else CaseStatus.REJECTED
+    db.commit()
+
+  except Exception:
+    db.rollback()
+    raise
+
+  finally:
+    db.close()
 
   #when resumed, decision is the human input
   return {"human_decision":decision,"final_status":f"human_{decision}"}
@@ -71,7 +110,7 @@ def human_review_node(state: VendorPilotState) ->dict:
 # Build Graph
 # ---------------------------------------------------------
 
-def build_graph():
+def build_graph(checkpointer):
   builder = StateGraph(VendorPilotState)
 
   #Add nodes
@@ -92,8 +131,15 @@ def build_graph():
   builder.add_edge("auto_approve",END)
   builder.add_edge("human_review",END)
 
-  #checkpointer: in memory for now
-  checkpointer = InMemorySaver()
-
+ 
   return builder.compile(checkpointer=checkpointer)
 
+
+# def build_persistent_graph():
+#     """Returns (app, checkpointer and context manager) using PostgresSaver. Caller must close checkpointer."""
+#     checkpointer_context = PostgresSaver.from_conn_string(settings.DATABASE_URL)
+#     checkpointer = checkpointer_context.__enter__()  # Manually enter context manager
+#     checkpointer.setup()
+#     app = build_graph(checkpointer=checkpointer)
+#     return app, checkpointer, checkpointer_context  # Also return context for closing
+   
