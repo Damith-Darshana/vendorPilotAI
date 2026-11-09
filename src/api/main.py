@@ -4,12 +4,13 @@ import asyncio
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
 
 from src.api.schemas import CaseCreateResponse, JobStatusResponse
 from src.api.jobs import create_job, get_job_queue, resume_job
 from src.db.database import SessionLocal
-from src.db.models import Case, Job, Finding
+from src.db.models import Case, Job, Finding, Document as DocumentModel
 
 from contextlib import asynccontextmanager
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -26,6 +27,14 @@ async def lifespan(app: FastAPI):
         yield
 
 app = FastAPI(title="VendorPilot AI API", lifespan=lifespan)
+# Add CORS middleware right after app initialization
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Or specify ["http://localhost:3000", "http://10.4.2.2:3000"]
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class DecisionRequest(BaseModel):
     decision: str  # "approved" or "rejected"
@@ -63,7 +72,18 @@ async def create_case(supplier_name: str = Form(...), file: UploadFile = File(..
     try:
         case = Case(id=case_id, supplier_name=supplier_name, status="queued")
         db.add(case)
+   
+        #adding the original PDF file as well to the db
+        doc_record = DocumentModel(
+            id=f"doc_{uuid.uuid4().hex[:8]}",
+            case_id = case_id,
+            filename = file_path.name,
+        )
+        db.add(doc_record)
         db.commit()
+    except Exception:
+        db.rollback()  
+        raise
     finally:
         db.close()
 
@@ -174,3 +194,25 @@ async def get_case(case_id: str):
         )
     finally:
         db.close()
+
+
+from fastapi.responses import FileResponse
+
+@app.get("/api/v1/cases/{case_id}/document")
+async def get_case_document(case_id:str):
+    """Return the Original PDF file for a case"""
+    db = SessionLocal()
+    try:
+
+        doc = db.query(DocumentModel).filter(DocumentModel.case_id == case_id).first()
+
+        if not doc:
+            raise HTTPException(status_code=404, detail = " No document found for this case")
+
+        file_path = Path("data/uploads")/doc.filename
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail = "File not found on disk")
+        return FileResponse(path=str(file_path),media_type="application/pdf")
+    finally:
+        db.close()
+
