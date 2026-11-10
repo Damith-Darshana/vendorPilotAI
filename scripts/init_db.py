@@ -6,8 +6,15 @@ from src.db.database import Base, engine
 from src.db.models import Case,Document,Finding,AuditLog
 from langgraph.checkpoint.postgres import PostgresSaver
 from src.config import settings
+from sqlalchemy import text
 
 def init():
+  with engine.connect() as conn:
+    conn.execute(text(
+        "ALTER TABLE findings ADD COLUMN IF NOT EXISTS page_number INTEGER"
+    ))
+    conn.commit()
+
   print("creating application tables...")
   Base.metadata.create_all(bind=engine)
   print("  Cases, Documents, Findings, AuditLogs created.")
