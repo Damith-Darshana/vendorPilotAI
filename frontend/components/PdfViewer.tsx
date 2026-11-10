@@ -1,11 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { Document,Page,pdfjs } from "react-pdf";
+import { useState, useEffect } from "react";
+import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
-// Required worker configuration
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 interface PdfViewerProps {
@@ -16,6 +15,13 @@ interface PdfViewerProps {
 export default function PdfViewer({ caseId, targetPage }: PdfViewerProps) {
   const [numPages, setNumPages] = useState<number>(0);
   const [pageNumber, setPageNumber] = useState<number>(targetPage || 1);
+
+  // Sync when parent changes targetPage (finding click)
+  useEffect(() => {
+    if (targetPage && targetPage !== pageNumber) {
+      setPageNumber(targetPage);
+    }
+  }, [targetPage]);
 
   const fileUrl = `http://localhost:8000/api/v1/cases/${caseId}/document`;
 
@@ -48,9 +54,8 @@ export default function PdfViewer({ caseId, targetPage }: PdfViewerProps) {
       <Document
         file={fileUrl}
         onLoadSuccess={onDocumentLoadSuccess}
-        onLoadError={(err) => console.error("PDF load error:", err)}
         loading={<p className="text-gray-500">Loading PDF...</p>}
-        error={<p className="text-red-500">Failed to load PDF. Check backend endpoint.</p>}
+        error={<p className="text-red-500">Failed to load PDF.</p>}
       >
         <Page pageNumber={pageNumber} width={500} />
       </Document>
