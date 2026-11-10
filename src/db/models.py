@@ -47,6 +47,7 @@ class Finding(Base):
   severity = Column(String, nullable=False)
   message = Column(Text, nullable=False)
   rule_id = Column(String, nullable=False)
+  page_number = Column(Integer,nullable=True)
   created_at = Column(DateTime, default=lambda:datetime.now(timezone.utc))
 
   case = relationship("Case", back_populates="findings")

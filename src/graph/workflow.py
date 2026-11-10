@@ -34,16 +34,35 @@ def validate_node(state: VendorPilotState) -> dict:
     findings = validate_document(state["extracted_doc"])
 
     # Convert to dicts for state
-    findings_dicts = [
-        {
-            "finding_id": f.finding_id,
-            "field_name": f.field_name,
-            "severity": f.severity.value,
-            "message": f.message,
-            "rule_id": f.rule_id,
-        }
-        for f in findings
-    ]
+    findings_dicts =[]
+    for f in findings:
+       #Try to get page number from the relevant field's evidence
+       field_obj = getattr(state["extracted_doc"],f.field_name,None)
+       page_num = None
+       if field_obj and field_obj.evidence:
+          page_num = field_obj.evidence.page_number
+
+       findings_dicts.append(
+       {
+           "finding_id": f.finding_id,
+           "field_name": f.field_name,
+           "severity": f.severity.value,
+           "message": f.message,
+           "rule_id": f.rule_id,
+           "page_number":page_num,
+       })
+       
+    
+       
+       
+       
+       
+       
+       
+       
+       
+       
+       
 
     # Persist findings to PostgreSQL
     db = SessionLocal()
@@ -56,6 +75,7 @@ def validate_node(state: VendorPilotState) -> dict:
                 severity=f_dict["severity"],
                 message=f_dict["message"],
                 rule_id=f_dict["rule_id"],
+                page_number = f_dict.get("page_number"),
             )
             db.add(db_finding)
         db.commit()

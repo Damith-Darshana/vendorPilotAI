@@ -73,7 +73,7 @@ Document text:
 # ---------------------------------------------------------
 # Extraction function
 # ---------------------------------------------------------
-def extract_document(file_path: str, use_fallback: bool = False) -> ExtractedDocument:
+def extract_document(file_path: str, use_fallback: bool = True) -> ExtractedDocument:
     """
     Extract structured fields from a PDF file.
     

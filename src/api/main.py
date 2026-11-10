@@ -181,7 +181,14 @@ async def get_case(case_id: str):
 
         findings = db.query(Finding).filter(Finding.case_id == case_id).all()
         findings_list = [
-            {"id": f.id, "field_name": f.field_name, "severity": f.severity, "message": f.message, "rule_id": f.rule_id}
+            {
+                "id": f.id, 
+                "field_name": f.field_name, 
+                "severity": f.severity, 
+                "message": f.message, 
+                "rule_id": f.rule_id,
+                "page_number":f.page_number,
+            }
             for f in findings
         ]
 
