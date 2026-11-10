@@ -61,6 +61,8 @@ async def run_case_job(job_id: str, case_id: str, file_path: str, checkpointer):
                     db.commit()
 
         except Exception as e:
+           
+           
             if job:
                 job.status = "failed"
                 job.error_message = str(e)
@@ -138,6 +140,8 @@ async def resume_job(job_id:str, case_id:str,decision:str,checkpointer):
 
 
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             job.status = "failed"
             job.error_message = str(e)
             db.commit()

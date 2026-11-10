@@ -46,6 +46,7 @@ class CaseDetailResponse(BaseModel):
     status: str
     findings: list
     created_at: str
+    job_status: Optional[str]
 
 
 

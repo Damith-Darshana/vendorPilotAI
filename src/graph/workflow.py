@@ -52,15 +52,6 @@ def validate_node(state: VendorPilotState) -> dict:
            "page_number":page_num,
        })
        
-    
-       
-       
-       
-       
-       
-       
-       
-       
        
        
 
@@ -143,6 +134,11 @@ def human_review_node(state: VendorPilotState) ->dict:
 
     #update case status
     case.status = CaseStatus.APPROVED if decision =="approved" else CaseStatus.REJECTED
+
+    # for testing i add the print state here
+    print(f"[human_review_node] case_id={state.get('case_id')}, decision={decision}")
+    print(f"[human_review_node] findings={state.get('findings')}")
+
     db.commit()
 
   except Exception:
