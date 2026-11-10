@@ -18,20 +18,32 @@ def extract_node(state: VendorPilotState) -> dict:
   """Node 1 : Extract structured data from PDF."""
   try:
     doc = extract_document(state["file_path"],use_fallback=True)
-    return {"extracted_doc":doc,"error":None}
+    return {
+       "extracted_doc":doc.model_dump(mode="json"),
+       "error":None,
+    }
   except Exception as e:
     return {"error":str(e)}
 
 from src.db.database import SessionLocal
 from src.db.models import Finding as FindingModel
-
+from src.schemas import ExtractedDocument
 
 def validate_node(state: VendorPilotState) -> dict:
     """Node 2: Run deterministic validation and persist findings."""
     if state.get("error"):
         return {}
 
-    findings = validate_document(state["extracted_doc"])
+    doc_data = state["extracted_doc"]
+    if isinstance(doc_data,dict):
+       doc = ExtractedDocument(**doc_data)
+
+    else:
+       doc = doc_data
+
+    findings = validate_document(doc)
+
+
 
     # Convert to dicts for state
     findings_dicts =[]
