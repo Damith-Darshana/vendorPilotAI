@@ -6,6 +6,7 @@ export interface Finding{
   severity:string;
   message:string;
   rule_id:string;
+  page_number:number | null;
 
 }
 
