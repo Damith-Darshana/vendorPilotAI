@@ -19,6 +19,7 @@ export default async function CasePage({
       <CaseWorkspace
         caseId={caseData.case_id}
         findings={caseData.findings}
+        jobStatus={caseData.job_status}
       />
     </main>
   );
