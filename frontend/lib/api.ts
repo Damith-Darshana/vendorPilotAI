@@ -14,9 +14,11 @@ export interface CaseDetail{
   case_id:string;
   supplier_name:string;
   status:string;
+  job_status : string | null ;
   findings:Finding[];
   created_at:string;
 }
+
 
 export async function getCase(caseId:string): Promise<CaseDetail>{
   const res = await fetch(`${API_BASE}/cases/${caseId}`,{cache:"no-store"});
@@ -27,3 +29,19 @@ export async function getCase(caseId:string): Promise<CaseDetail>{
 export async function listCases(): Promise<CaseDetail[]>{
   return []; // we don't have a proper list endpoint yet in the v1
 }
+
+
+export async function submitDecision(
+    caseId:string,
+    decision:"approved"| "rejected",
+    notes?:string
+  ):Promise<void> {
+    const res = await fetch(`${API_BASE}/cases/${caseId}/decision`,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ decision, reviewer_notes: notes }),
+    });
+    if(!res.ok) throw new Error(`Decision failed: ${res.statusText}`);
+  }
+
+  
