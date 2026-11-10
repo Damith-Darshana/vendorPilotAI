@@ -192,10 +192,14 @@ async def get_case(case_id: str):
             for f in findings
         ]
 
+        latest_job = db.query(Job).filter(Job.case_id == case_id).order_by(Job.created_at.desc()).first()
+        job_status = latest_job.status if latest_job else None
+
         return CaseDetailResponse(
             case_id=case.id,
             supplier_name=case.supplier_name,
             status=case.status.value if hasattr(case.status, "value") else case.status,
+            job_status = job_status,
             findings=findings_list,
             created_at=case.created_at.isoformat(),
         )
