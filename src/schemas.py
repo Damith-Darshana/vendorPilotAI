@@ -25,6 +25,21 @@ class ExtractedDocument(BaseModel):
   insurance_limit: ExtractedField = Field(description="The coverage amount in USD. Null if not applicable.")
 
 
+class FlatExtractedDocument(BaseModel):
+  """Flat schema for providers that struggle with nested models like Groq"""
+  document_type:str = Field(description = "business_registration,insurance_certificate,tax_form,security_questionnaire,unknown")
+  company_name:Optional[str] = Field(default=None,description="Company_name")
+  registration_number: Optional[str] = Field(default=None, description="Registration or tax ID")
+  issue_date: Optional[str] = Field(default=None, description="YYYY-MM-DD")
+  expiry_date: Optional[str] = Field(default=None, description="YYYY-MM-DD, null if no expiry")
+  insurance_limit: Optional[str] = Field(default=None, description="Numeric amount only")
+  company_name_page: Optional[int] = Field(default=None, description="Page number where company_name was found")
+  registration_number_page: Optional[int] = Field(default=None, description="Page number where registration_number was found")
+  issue_date_page: Optional[int] = Field(default=None, description="Page number where issue_date was found")
+  expiry_date_page: Optional[int] = Field(default=None, description="Page number where expiry_date was found")
+  insurance_limit_page: Optional[int] = Field(default=None, description="Page number where insurance_limit was found")
+
+
 # ---------------------------------------------------------
 # 2. GOLDEN DATASET SCHEMA (What we manually write for testing)
 # ---------------------------------------------------------
