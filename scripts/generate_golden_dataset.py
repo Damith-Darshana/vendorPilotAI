@@ -2,7 +2,7 @@ import json
 import os
 import shutil
 from fpdf import FPDF
-from pahtlib import Path
+from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
 DATASET_DIR = ROOT / "data" / "golden_dataset"
