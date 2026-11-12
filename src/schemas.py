@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List,Optional,Literal
+from typing import List,Optional,Literal,Union
 from enum import Enum
 
 # ---------------------------------------------------------
@@ -30,9 +30,9 @@ class FlatExtractedDocument(BaseModel):
   document_type:str = Field(description = "business_registration,insurance_certificate,tax_form,security_questionnaire,unknown")
   company_name:Optional[str] = Field(default=None,description="Company_name")
   registration_number: Optional[str] = Field(default=None, description="Registration or tax ID")
-  issue_date: Optional[str] = Field(default=None, description="YYYY-MM-DD")
-  expiry_date: Optional[str] = Field(default=None, description="YYYY-MM-DD, null if no expiry")
-  insurance_limit: Optional[str] = Field(default=None, description="Numeric amount only")
+  issue_date: Optional[Union[str,int,float]] = Field(default=None, description="YYYY-MM-DD")
+  expiry_date: Optional[Union[str,int,float]] = Field(default=None, description="YYYY-MM-DD, null if no expiry")
+  insurance_limit: Optional[Union[str,int,float]] = Field(default=None, description="Numeric amount only")
   company_name_page: Optional[int] = Field(default=None, description="Page number where company_name was found")
   registration_number_page: Optional[int] = Field(default=None, description="Page number where registration_number was found")
   issue_date_page: Optional[int] = Field(default=None, description="Page number where issue_date was found")
