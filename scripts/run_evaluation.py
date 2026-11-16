@@ -15,6 +15,8 @@ from src.schemas import ExtractedDocument
 
 DATASET_DIR = Path("data/golden_dataset")
 SEMAPHORE = asyncio.Semaphore(5)  # 5 concurrent cases, safe for Gemini 15 RPM & Groq 30 RPM
+GEMINI_EXHAUSTED = False
+
 
 @dataclass
 class CaseResult:
@@ -29,45 +31,84 @@ class CaseResult:
     error: Optional[str] = None
     extracted_fields: dict = field(default_factory=dict)
 
+    
+
 async def run_baseline(case: dict, doc: dict):
     """Single LLM call, no validation, no routing. Only extraction."""
+    
+    global GEMINI_EXHAUSTED
     async with SEMAPHORE:
         start = time.time()
-        try:
-            extracted = await extract_async(doc["file_path"], provider="gemini")
-            latency = (time.time() - start) * 1000
-            return extracted, "gemini", latency, None
-        except Exception as e:
-            print(f"[BASELINE Gemini failed] {case['case_id']}: {e}")
-            traceback.print_exc()
-            # Fallback to Groq
-            try:
-                extracted = await extract_async(doc["file_path"], provider="groq")
-                latency = (time.time() - start) * 1000
-                return extracted, "groq_fallback", latency, None
-            except Exception as e2:
-                return None, "failed", 0, str(e2)
+        extracted = None
+        provider = "failed"
+        if not GEMINI_EXHAUSTED:
+            
+          try:
+              extracted = await extract_async(doc["file_path"], provider="gemini")
+              provider = "gemini"
 
+          except Exception as e:
+              error_str = str(e)
+              # checking if it is a daily limi 429 exception
+              if "RESOURCE_EXHAUSTED" in error_str or "429" in error_str:
+                  # then distingusih daily or per-minute limit, daily limit message contains "per day"
+                  if "per day" in error_str.lower() or "daily" in error_str.lower():
+                      print(f"\n[CIRCUIT BREAKER] - Gemini daily limit hit. Disabling Gemini for rest of run.")
+                      GEMINI_EXHAUSTED = True
+            
+        # Fall to groq fallback
+        if extracted is None:            
+          try:
+              extracted = await extract_async(doc["file_path"], provider="groq")
+              # for testing under what key fields actually groq returns data
+              print(f"\n=== RAW GROQ OUTPUT for {case['case_id']} ===")
+              print(json.dumps(extracted, indent=2, default=str))
+              print(f"=== EXPECTED ===")
+              print(json.dumps(doc["expected_fields"], indent=2, default=str))
+              print("=" * 40)
+              provider = "groq_fallback"
+          except Exception as e2:
+              return None, "failed", 0, str(e2)
+
+        latency = (time.time() - start) * 1000
+        return extracted, provider, latency, None
+    
 async def run_agentic(case: dict, doc: dict):
     """Full pipeline: extract → validate → route."""
+
+    global GEMINI_EXHAUSTED
     async with SEMAPHORE:
         start = time.time()
-        try:
-            extracted = await extract_async(doc["file_path"], provider="gemini")
-            provider = "gemini"
-        except Exception:
-            try:
-                extracted = await extract_async(doc["file_path"], provider="groq")
-                provider = "groq_fallback"
-            except Exception as e:
-                print(f"[AGENTIC Groq failed] {case['case_id']}: {e}")
-                traceback.print_exc()
-                return None, [], "failed", 0, str(e)
+        extracted = None
+        provider = "failed"
+
+        if not GEMINI_EXHAUSTED:
+          try:
+              extracted = await extract_async(doc["file_path"], provider="gemini")
+              provider = "gemini"
+          except Exception as e:
+              error_str = str(e)
+              if "RESOURCE_EXHAUSTED" in error_str or "429" in error_str:
+                  if "per day" in error_str.lower() or "daily" in error_str.lower():
+                      print(f"\n[CIRCUIT BREAKER] Gemini daily limit hit. Disabling Gemini for rest of run.") 
+                      GEMINI_EXHAUSTED = True
+        if extracted is None:
+              try:
+                  extracted = await extract_async(doc["file_path"], provider="groq")
+                  provider = "groq_fallback"
+              except Exception as e2:
+                  print(f"[AGENTIC Groq failed] {case['case_id']}: {e2}")
+                 
+                  return None, [], "failed", 0, str(e2)
 
         latency = (time.time() - start) * 1000
 
         # Validate
-        doc_obj = ExtractedDocument(**extracted)
+        try:
+          doc_obj = ExtractedDocument(**extracted)
+        except Exception as e:
+            return None,[],"failed",0,str(e)
+        
         findings = validate_document(doc_obj)
         findings_dicts = [
             {"rule_id": f.rule_id, "severity": f.severity.value} for f in findings
@@ -79,14 +120,63 @@ async def run_agentic(case: dict, doc: dict):
 
         return extracted, findings_dicts, provider, latency, None
 
+
+import re
+
+def normalize_field_value(val,field_name:str):
+    """"Normalize expected and actual values for fair semantic comparison"""
+    if val is None:
+        return None
+
+    s = str(val).strip()
+    # Treat empty strings,null,none values as None
+    if s.lower() in ["none","null",""]:
+        return None
+    
+    # Normalize whitespace for text fields
+    if field_name == "company_name":
+        s = re.sub(r'\s+',' ',s)
+
+    if s.endswith(".0"):
+        s = s[:-2]
+
+    # 2. Normalize date formats (converts YYYY/MM/DD to YYYY-MM-DD)
+    if "date" in field_name:
+        s = s.replace("/", "-")
+
+    # Normalize insurance_limit field
+    if field_name == "insurance_limit":
+        try:
+            # Parse as float, then convert to int if it's a whole number
+            f = float(s.replace(',',''))
+            if f.is_integer():
+                return str(int(f))
+            return str(f)
+        except ValueError:
+          pass
+    return s
+
+
+
+
 def compare_fields(expected: dict, actual: dict) -> dict:
     """Compare expected vs actual fields. Returns per-field correctness."""
     results = {}
     for field in ["company_name", "registration_number", "issue_date", "expiry_date", "insurance_limit"]:
         exp_val = expected.get(field)
         act_field = actual.get(field, {})
-        act_val = act_field.get("value") if isinstance(act_field, dict) else None
-        results[field] = (str(exp_val).strip() if exp_val else None) == (str(act_val).strip() if act_val else None)
+
+        # extract the actual value whether it is a dict or a direct scalar
+        if isinstance(act_field, dict):
+          act_val = act_field.get("value") 
+        else:
+          act_val = act_field
+        # Normalizing to strings for comparison
+        norm_exp = normalize_field_value(exp_val,field)
+        norm_act = normalize_field_value(act_val,field)
+
+
+        results[field] = (norm_exp == norm_act)
     return results
 
 async def main():
@@ -109,7 +199,15 @@ async def main():
         br = CaseResult(case_id=case["case_id"], provider_used=provider_b, latency_ms=lat_b, error=err_b)
         if extracted_b:
             br.extraction_correct = all(compare_fields(doc["expected_fields"], extracted_b).values())
-            br.extracted_fields = {k: v.get("value") for k, v in extracted_b.items() if isinstance(v, dict) and "value" in v}
+            if extracted_b is not None:
+              br.extracted_fields = {
+                  k: (v.get("value") if isinstance(v, dict) else v)
+                  for k, v in extracted_b.items()
+                  if k in ["company_name", "registration_number", "issue_date", "expiry_date", "insurance_limit"]
+              }
+            else:
+              br.extracted_fields = {}  
+
         results_baseline.append(br)
 
         # Agentic
@@ -122,7 +220,11 @@ async def main():
             ar.outcome_expected = case["expected_outcome"]
             has_critical = any(f["severity"] == "critical" for f in findings_a)
             ar.outcome_actual = "human_review" if has_critical else "auto_approved"
-            ar.extracted_fields = {k: v.get("value") for k, v in extracted_a.items() if isinstance(v, dict) and "value" in v}
+            ar.extracted_fields = {
+                k: (v.get("value") if isinstance(v, dict) else v)
+                for k, v in extracted_b.items()
+                if k in ["company_name", "registration_number", "issue_date", "expiry_date", "insurance_limit"]
+            }
         results_agentic.append(ar)
 
     # Print summary

@@ -16,15 +16,21 @@ print("Gemini key loaded:", bool(os.getenv("GOOGLE_API_KEY")))
 
 
 
-EXTRACTION_PROMOT = ChatPromptTemplate.from_messages([
-  ("system","""Extract the requested fields from the provided document text.
-For each field, provide the exact text snippet that proves the value.
-Page numbers start at 1. If a field is not present, set value to null.
-Dates in YYYY-MM-DD format. Insurance limit: numeric only.
-Classify document_type as: business_registration, insurance_certificate, tax_form, security_questionnaire, unknown.
-Be conservative: if unsure, set confidence below 0.7."""),
-("human","Document text: \n{document_text}"),
-])
+EXTRACTION_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", """You are a document extraction specialist. Your job is to find and extract specific values from the document text.
+
+        CRITICAL RULES:
+        1. You MUST extract the actual values from the document. Do NOT return null unless the field is genuinely absent.
+        2. For company_name: look for "Company Name:", "Insured Name:", or similar labels.
+        3. For registration_number: look for "Registration Number:", "Reg No:", or similar.
+        4. For issue_date: look for "Issue Date:", "Effective Date:", or similar. Dates must be in YYYY-MM-DD format (e.g., 2024-01-01, not 20240101).
+        5. For expiry_date: look for "Expiration Date:", "Expiry Date:", or similar. Dates must be in YYYY-MM-DD format (e.g., 2024-01-01, not 20240101).
+        6. For insurance_limit: look for "Coverage Limit:", "Limit:", or similar. Return numbers only.
+        7. For document_type: classify based on the document title.
+
+        If you return null for a field that is clearly present in the text, you have failed the task."""),
+            ("human", "Document text:\n{document_text}"),
+    ])
 
 def _build_gemini():
   return ChatGoogleGenerativeAI(
@@ -37,16 +43,42 @@ def _build_gemini():
 def _build_groq():
   #llama-3.3-70b-versatile does not support json_schema strict mode
   return ChatGroq(
-    model= "qwen/qwen3.8-27b",
+    model= "openai/gpt-oss-20b",
     temperature = 0,
     api_key = os.getenv("GROQ_API_KEY"),
-  ).with_structured_output(FlatExtractedDocument,method="json_schema")
+  ).with_structured_output(FlatExtractedDocument,method="json_schema", strict=True)
+
+def _flat_to_nested(flat:FlatExtractedDocument) -> dict:
+  """Convert Groq's flat output to the nested ExtractedDocument Shape"""
+  def make_field(value,page):
+    if value is None:
+      return None
+    return{
+      "value": str(value),
+      "evidence":{
+        "page_number":page if isinstance(page,int) else (int(page) if page and str(page).isdigit() else 1),
+        "text_snippet":"",
+        "confidence_score":0.8,
+      },
+
+    }
+  return{
+      "document_type": flat.document_type,
+      "company_name": make_field(flat.company_name, flat.company_name_page),
+      "registration_number": make_field(flat.registration_number, flat.registration_number_page),
+      "issue_date": make_field(flat.issue_date, flat.issue_date_page),
+      "expiry_date": make_field(flat.expiry_date, flat.expiry_date_page),
+      "insurance_limit": make_field(flat.insurance_limit, flat.insurance_limit_page),
+  }
+
 
 async def extract_async(file_path:str,provider:str="gemini"):
-  """Extract structured fields from a PDF. returns a dict(JSON-safe)"""
-  import fitz
-  doc = fitz.open(file_path)
+  """Extract structured fields from a PDF. returns Nested dict matching ExtractedDocument shape, a dict(JSON-safe)"""
+  import pymupdf
+
+  doc = pymupdf.open(file_path)
   full_text  = ""
+  
   for page_num,page in enumerate(doc,start=1):
     text = page.get_text()
     full_text += f"\n---PAGE {page_num} ---\n{text}"
@@ -57,20 +89,15 @@ async def extract_async(file_path:str,provider:str="gemini"):
 
   if provider == "gemini":
     model = _build_gemini()
-  else:
+    chain = EXTRACTION_PROMPT | model
+    result = await chain.ainvoke({"document_text":full_text})
+    return result.model_dump(mode="json")
+  elif provider == "groq":
     model = _build_groq()
+    chain = EXTRACTION_PROMPT | model
+    result = await chain.ainvoke({"document_text":full_text})
+    return _flat_to_nested(result)
 
-  chain = EXTRACTION_PROMOT | model
-  result = await chain.ainvoke({"document_text":full_text})
-  if provider == "groq":
-    flat = result
-    return {
-        "document_type": flat.document_type,
-        "company_name": {"value": flat.company_name, "evidence": {"page_number": flat.company_name_page, "text_snippet": "", "confidence_score": 0.8} if flat.company_name_page else None},
-        "registration_number": {"value": flat.registration_number, "evidence": {"page_number": flat.registration_number_page, "text_snippet": "", "confidence_score": 0.8} if flat.registration_number_page else None},
-        "issue_date": {"value": flat.issue_date, "evidence": {"page_number": flat.issue_date_page, "text_snippet": "", "confidence_score": 0.8} if flat.issue_date_page else None},
-        "expiry_date": {"value": flat.expiry_date, "evidence": {"page_number": flat.expiry_date_page, "text_snippet": "", "confidence_score": 0.8} if flat.expiry_date_page else None},
-        "insurance_limit": {"value": flat.insurance_limit, "evidence": {"page_number": flat.insurance_limit_page, "text_snippet": "", "confidence_score": 0.8} if flat.insurance_limit_page else None},
-    }
-  return result.model_dump(mode="json")
+  else:
+    raise ValueError(f"Unknown Provider : {provider}")
 

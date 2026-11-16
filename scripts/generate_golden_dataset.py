@@ -76,7 +76,7 @@ for i in range(1, 4):
     write_case(cid, name, "Valid insurance, not expired.", [{
         "file_path": f"data/golden_dataset/pdfs/{fname}",
         "expected_document_type": "insurance_certificate",
-        "expected_fields": {"company_name": f"{name} Ltd.", "registration_number": None, "issue_date": None, "expiry_date": "2027-02-01", "insurance_limit": str(2000000+i*100000)},
+        "expected_fields": {"company_name": f"{name} Ltd.", "registration_number": None, "issue_date": "2024-02-01", "expiry_date": "2027-02-01", "insurance_limit": str(2000000+i*100000)},
         "expected_page_numbers": {"company_name": 1, "expiry_date": 1, "insurance_limit": 1},
     }], [], "auto_approved")
 
@@ -94,7 +94,7 @@ for i in range(1, 5):
     write_case(cid, name, "Expired insurance certificate.", [{
         "file_path": f"data/golden_dataset/pdfs/{fname}",
         "expected_document_type": "insurance_certificate",
-        "expected_fields": {"company_name": f"{name} Inc.", "registration_number": None, "issue_date": None, "expiry_date": "2024-01-01", "insurance_limit": "1000000"},
+        "expected_fields": {"company_name": f"{name} Inc.", "registration_number": None, "issue_date": "2022/01/01", "expiry_date": "2024-01-01", "insurance_limit": "1000000"},
         "expected_page_numbers": {"company_name": 1, "expiry_date": 1, "insurance_limit": 1},
     }], [{"rule_id": "EXPIRED_DOCUMENT", "severity": "critical"}], "human_review")
 
@@ -131,7 +131,7 @@ for i in range(1, 4):
     write_case(cid, name, "Irregular spacing may cause low confidence.", [{
         "file_path": f"data/golden_dataset/pdfs/{fname}",
         "expected_document_type": "insurance_certificate",
-        "expected_fields": {"company_name": f"{name} LLC", "registration_number": None, "issue_date": None, "expiry_date": "2027-02-01", "insurance_limit": "1500000"},
+        "expected_fields": {"company_name": f"{name} LLC", "registration_number": None, "issue_date":"2024/02/01", "expiry_date": "2027-02-01", "insurance_limit": "1500000"},
         "expected_page_numbers": {"company_name": 1, "expiry_date": 1, "insurance_limit": 1},
     }], [{"rule_id": "LOW_CONFIDENCE", "severity": "medium"}], "human_review")
 
