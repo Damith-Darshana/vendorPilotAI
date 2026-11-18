@@ -14,22 +14,40 @@ from src.schemas import FindingSeverity
 # Nodes
 # ---------------------------------------------------------
 
-def extract_node(state: VendorPilotState) -> dict:
+async def extract_node(state: VendorPilotState) -> dict:
   """Node 1 : Extract structured data from PDF."""
+  import asyncio
+  from src.evaluation.async_extractor import extract_async
+
   try:
-    doc = extract_document(state["file_path"],use_fallback=True)
+    # doc = extract_document(state["file_path"],use_fallback=True)
+    extracted,usage = await extract_async(state["file_path"],provider="gemini")
+    
     return {
-       "extracted_doc":doc.model_dump(mode="json"),
+       "extracted_doc":extracted,
+       "usage_metadata":usage,
        "error":None,
     }
   except Exception as e:
-    return {"error":str(e)}
+    # Fallback to Groq if Gemini fails
+    try:
+      extracted, usage = await extract_async(state["file_path"], provider="groq")
+      
+      return {
+          "extracted_doc": extracted,
+          "usage_metadata": usage,
+          "error": None,
+      }
+    except Exception as e2:
+        print(f"error bro : {e2}")
+        return {"error": e2}
 
+    
 from src.db.database import SessionLocal
 from src.db.models import Finding as FindingModel
 from src.schemas import ExtractedDocument
 
-def validate_node(state: VendorPilotState) -> dict:
+async def validate_node(state: VendorPilotState) -> dict:
     """Node 2: Run deterministic validation and persist findings."""
     if state.get("error"):
         return {}
@@ -49,9 +67,9 @@ def validate_node(state: VendorPilotState) -> dict:
     findings_dicts =[]
     for f in findings:
        #Try to get page number from the relevant field's evidence
-       field_obj = getattr(state["extracted_doc"],f.field_name,None)
+       field_obj = getattr(doc,f.field_name,None)
        page_num = None
-       if field_obj and field_obj.evidence:
+       if field_obj and hasattr(field_obj,"evidence") and field_obj.evidence:
           page_num = field_obj.evidence.page_number
 
        findings_dicts.append(
@@ -106,7 +124,7 @@ def route_decision(state:VendorPilotState)->str:
   has_critical = any(f.get("severity") == "critical" for f in findings)
   return "human_review" if has_critical else "auto_approve"
 
-def auto_approve_node(state:VendorPilotState)->dict:
+async def auto_approve_node(state:VendorPilotState)->dict:
   """No critical issues; auto-complete"""
 
   return {"final_status":"auto_approved"}
@@ -116,7 +134,7 @@ def auto_approve_node(state:VendorPilotState)->dict:
 from src.db.database import SessionLocal
 from src.db.models import AuditLog,Case,CaseStatus
 
-def human_review_node(state: VendorPilotState) ->dict:
+async def human_review_node(state: VendorPilotState) ->dict:
   """
     Pause and wait for human decision.
     Uses interrupt(); when resumed, the human input is injected.

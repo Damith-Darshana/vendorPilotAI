@@ -15,7 +15,7 @@ from src.schemas import ExtractedDocument
 
 DATASET_DIR = Path("data/golden_dataset")
 SEMAPHORE = asyncio.Semaphore(5)  # 5 concurrent cases, safe for Gemini 15 RPM & Groq 30 RPM
-GEMINI_EXHAUSTED = False
+GEMINI_EXHAUSTED = True
 
 
 @dataclass
@@ -44,7 +44,13 @@ async def run_baseline(case: dict, doc: dict):
         if not GEMINI_EXHAUSTED:
             
           try:
-              extracted = await extract_async(doc["file_path"], provider="gemini")
+              extracted,usage = await extract_async(doc["file_path"], provider="gemini")
+            #  for testing only, i add the print statements
+              print(f"\n=== RAW Gemini OUTPUT for {case['case_id']} ===")
+              print(json.dumps(extracted, indent=2, default=str))
+              print(f"=== EXPECTED ===")
+              print(json.dumps(doc["expected_fields"], indent=2, default=str))
+              print("=" * 40)
               provider = "gemini"
 
           except Exception as e:
@@ -55,11 +61,13 @@ async def run_baseline(case: dict, doc: dict):
                   if "per day" in error_str.lower() or "daily" in error_str.lower():
                       print(f"\n[CIRCUIT BREAKER] - Gemini daily limit hit. Disabling Gemini for rest of run.")
                       GEMINI_EXHAUSTED = True
+              else:
+                  print(f" \n (run_baseline) Gemini Error : {e}\n ")
             
         # Fall to groq fallback
         if extracted is None:            
           try:
-              extracted = await extract_async(doc["file_path"], provider="groq")
+              extracted,usage = await extract_async(doc["file_path"], provider="groq")
               # for testing under what key fields actually groq returns data
               print(f"\n=== RAW GROQ OUTPUT for {case['case_id']} ===")
               print(json.dumps(extracted, indent=2, default=str))
@@ -84,7 +92,7 @@ async def run_agentic(case: dict, doc: dict):
 
         if not GEMINI_EXHAUSTED:
           try:
-              extracted = await extract_async(doc["file_path"], provider="gemini")
+              extracted,usage = await extract_async(doc["file_path"], provider="gemini")
               provider = "gemini"
           except Exception as e:
               error_str = str(e)
@@ -92,9 +100,11 @@ async def run_agentic(case: dict, doc: dict):
                   if "per day" in error_str.lower() or "daily" in error_str.lower():
                       print(f"\n[CIRCUIT BREAKER] Gemini daily limit hit. Disabling Gemini for rest of run.") 
                       GEMINI_EXHAUSTED = True
+              else:
+                  print(f" \n (run_agentic) Gemini Error : {e}\n ")
         if extracted is None:
               try:
-                  extracted = await extract_async(doc["file_path"], provider="groq")
+                  extracted,usage = await extract_async(doc["file_path"], provider="groq")
                   provider = "groq_fallback"
               except Exception as e2:
                   print(f"[AGENTIC Groq failed] {case['case_id']}: {e2}")
@@ -222,7 +232,7 @@ async def main():
             ar.outcome_actual = "human_review" if has_critical else "auto_approved"
             ar.extracted_fields = {
                 k: (v.get("value") if isinstance(v, dict) else v)
-                for k, v in extracted_b.items()
+                for k, v in extracted_a.items()
                 if k in ["company_name", "registration_number", "issue_date", "expiry_date", "insurance_limit"]
             }
         results_agentic.append(ar)

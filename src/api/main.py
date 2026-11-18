@@ -10,7 +10,7 @@ from sse_starlette.sse import EventSourceResponse
 from src.api.schemas import CaseCreateResponse, JobStatusResponse
 from src.api.jobs import create_job, get_job_queue, resume_job
 from src.db.database import SessionLocal
-from src.db.models import Case, Job, Finding, Document as DocumentModel
+from src.db.models import Case, Job, Finding, Document as DocumentModel,JobMetrics
 
 from contextlib import asynccontextmanager
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -225,6 +225,27 @@ async def get_case_document(case_id:str):
         if not file_path.exists():
             raise HTTPException(status_code=404, detail = "File not found on disk")
         return FileResponse(path=str(file_path),media_type="application/pdf")
+    finally:
+        db.close()
+
+
+@app.get("/api/v1/jobs/{job_id}/metrics")
+async def get_job_metrics(job_id: str):
+    """Return token usage and latency for a job, if captured."""
+    db = SessionLocal()
+    try:
+        metrics = db.query(JobMetrics).filter(JobMetrics.job_id == job_id).first()
+        if not metrics:
+            raise HTTPException(status_code=404, detail="No metrics for this job")
+        return {
+            "job_id": metrics.job_id,
+            "provider": metrics.provider,
+            "model_name": metrics.model_name,
+            "input_tokens": metrics.input_tokens,
+            "output_tokens": metrics.output_tokens,
+            "total_tokens": metrics.total_tokens,
+            "latency_ms": metrics.latency_ms,
+        }
     finally:
         db.close()
 

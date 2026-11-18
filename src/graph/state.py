@@ -21,4 +21,6 @@ class VendorPilotState(TypedDict,total=False):
 
   error: Optional[str]
 
+  usage_metadata: Optional[dict]
+
   

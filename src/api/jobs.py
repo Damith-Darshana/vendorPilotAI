@@ -4,7 +4,7 @@ import asyncio
 from datetime import datetime
 from typing import Optional
 from src.db.database import SessionLocal
-from src.db.models import Job, Case, CaseStatus
+from src.db.models import Job, Case, CaseStatus, JobMetrics
 from src.graph.workflow import build_graph
 from langgraph.types import Command
 
@@ -36,11 +36,31 @@ async def run_case_job(job_id: str, case_id: str, file_path: str, checkpointer):
 
         config = {"configurable": {"thread_id": case_id}}
 
+        #Capture the latency around the full graph invocation
+        import time
+        start_time = time.time()
+
         try:
             result = await app.ainvoke(
                 {"file_path": file_path, "case_id": case_id},
                 config=config,
             )
+            latency_ms = int((time.time() - start_time)*1000)
+
+            usage = result.get("usage_metadata")
+            if usage:
+                metrics = JobMetrics(
+                    job_id=job_id,
+                    case_id=case_id,
+                    provider=usage.get("provider", "unknown"),
+                    model_name=usage.get("model_name"),
+                    input_tokens=usage.get("input_tokens"),
+                    output_tokens=usage.get("output_tokens"),
+                    total_tokens=usage.get("total_tokens"),
+                    latency_ms=latency_ms,
+                )
+                db.add(metrics)
+                db.commit()
 
             if result.get("__interrupt__"):
                 await queue.put({
@@ -104,7 +124,9 @@ async def resume_job(job_id:str, case_id:str,decision:str,checkpointer):
     Resume a paused graph with a human decision.
     Emits SSE events as the graph continues to completion.
     """
-
+    import time
+    start_time = time.time()
+    
     queue = _job_queues.get(job_id)
     if not queue:
         # Queue was closed create a new one for this resume
@@ -129,6 +151,24 @@ async def resume_job(job_id:str, case_id:str,decision:str,checkpointer):
 
         try:
             result = await app.ainvoke(Command(resume=decision),config = config)
+
+            latency_ms = int((time.time() - start_time) * 1000)
+
+            usage = result.get("usage_metadata")
+            if usage:
+                from src.db.models import JobMetrics
+                metrics = JobMetrics(
+                    job_id=job_id,
+                    case_id=case_id,
+                    provider=usage.get("provider", "unknown"),
+                    model_name=usage.get("model_name"),
+                    input_tokens=usage.get("input_tokens"),
+                    output_tokens=usage.get("output_tokens"),
+                    total_tokens=usage.get("total_tokens"),
+                    latency_ms=latency_ms,
+                )
+                db.add(metrics)
+                db.commit()
 
             final_status = result.get("final_status","unknown")
             await queue.put({

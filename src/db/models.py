@@ -75,3 +75,20 @@ class Job(Base):
   updated_at = Column(DateTime,default=lambda:datetime.now(timezone.utc),onupdate=lambda:datetime.now(timezone.utc))
 
   case = relationship("Case")
+
+
+class JobMetrics(Base):
+  __tablename__ = "job_metrics"
+
+  id = Column(Integer,primary_key = True, autoincrement=True)
+  job_id = Column(String,ForeignKey("jobs.id"),nullable=False)
+  case_id = Column(String, ForeignKey("cases.id"), nullable=False)
+  provider = Column(String, nullable=False)  # "gemini" | "groq_fallback"
+  model_name = Column(String, nullable=True)
+  input_tokens = Column(Integer, nullable=True)
+  output_tokens = Column(Integer, nullable=True)
+  total_tokens = Column(Integer, nullable=True)
+  latency_ms = Column(Integer, nullable=True)
+  created_at = Column(DateTime, default=lambda:datetime.now(timezone.utc))
+  job = relationship("Job")
+  case = relationship("Case")

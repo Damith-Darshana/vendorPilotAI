@@ -72,8 +72,12 @@ def _flat_to_nested(flat:FlatExtractedDocument) -> dict:
   }
 
 
-async def extract_async(file_path:str,provider:str="gemini"):
-  """Extract structured fields from a PDF. returns Nested dict matching ExtractedDocument shape, a dict(JSON-safe)"""
+async def extract_async(file_path:str,provider:str="gemini") -> tuple[dict,dict]:
+  """
+    Returns Two dicts: 
+         1- extracted_dict:Extract structured fields from a PDF. returns Nested dict matching ExtractedDocument shape, a dict(JSON-safe)
+         2- usage_metadata_dict : contains input_tokens, output_tokens, total_tokens, model_name
+  """
   import pymupdf
 
   doc = pymupdf.open(file_path)
@@ -91,13 +95,29 @@ async def extract_async(file_path:str,provider:str="gemini"):
     model = _build_gemini()
     chain = EXTRACTION_PROMPT | model
     result = await chain.ainvoke({"document_text":full_text})
-    return result.model_dump(mode="json")
+    extracted = result.model_dump(mode="json")
+    usage = _extract_usage(result,"gemini")
+    return extracted, usage
+  
   elif provider == "groq":
     model = _build_groq()
     chain = EXTRACTION_PROMPT | model
     result = await chain.ainvoke({"document_text":full_text})
-    return _flat_to_nested(result)
+    extracted = _flat_to_nested(result)
+    usage = _extract_usage(result,"groq")
+    return extracted, usage
 
   else:
     raise ValueError(f"Unknown Provider : {provider}")
 
+def _extract_usage(llm_result,provider:str) ->dict:
+  """Extract token usage from the LangChain response object """
+  meta = getattr(llm_result,"usage_metadata",None) or {}
+  return {
+    "provider": provider,
+    "model_name":getattr(llm_result,"response_metadata",{}).get("model_name",None),
+    "input_tokens": meta.get("input_tokens"),
+    "output_tokens": meta.get("output_tokens"),
+    "total_tokens": meta.get("total_tokens"),
+    
+  }

@@ -42,33 +42,33 @@ print(f"Findings: {len(case_detail['findings'])}")
 for f in case_detail["findings"]:
     print(f"  [{f['severity'].upper()}] {f['rule_id']}: {f['message']}")
 
-# 4. Submit approval
-print("\n" + "=" * 60)
-print("4. Submitting approval...")
-print("=" * 60)
+# # 4. Submit approval
+# print("\n" + "=" * 60)
+# print("4. Submitting approval...")
+# print("=" * 60)
 
-decision_resp = requests.post(
-    f"{BASE}/api/v1/cases/{case_id}/decision",
-    json={"decision": "approved", "reviewer_notes": "Expired insurance noted, but supplier provided updated certificate separately."}
-)
-print(f"Decision response: {decision_resp.json()}")
+# decision_resp = requests.post(
+#     f"{BASE}/api/v1/cases/{case_id}/decision",
+#     json={"decision": "approved", "reviewer_notes": "Expired insurance noted, but supplier provided updated certificate separately."}
+# )
+# print(f"Decision response: {decision_resp.json()}")
 
-# 5. Wait for completion
-print("\n" + "=" * 60)
-print("5. Waiting for resume to complete...")
-print("=" * 60)
+# # 5. Wait for completion
+# print("\n" + "=" * 60)
+# print("5. Waiting for resume to complete...")
+# print("=" * 60)
 
-for _ in range(15):
-    time.sleep(1)
-    status = requests.get(f"{BASE}/api/v1/jobs/{job_id}").json()
-    print(f"  Status: {status['status']}")
-    if status["status"] in ("completed", "failed"):
-        break
+# for _ in range(15):
+#     time.sleep(1)
+#     status = requests.get(f"{BASE}/api/v1/jobs/{job_id}").json()
+#     print(f"  Status: {status['status']}")
+#     if status["status"] in ("completed", "failed"):
+#         break
 
-# 6. Check final case status
-print("\n" + "=" * 60)
-print("6. Final case status:")
-print("=" * 60)
+# # 6. Check final case status
+# print("\n" + "=" * 60)
+# print("6. Final case status:")
+# print("=" * 60)
 
-final_case = requests.get(f"{BASE}/api/v1/cases/{case_id}").json()
-print(f"Status: {final_case['status']}")
+# final_case = requests.get(f"{BASE}/api/v1/cases/{case_id}").json()
+# print(f"Status: {final_case['status']}")
