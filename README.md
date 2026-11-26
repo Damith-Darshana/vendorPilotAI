@@ -1,794 +1,677 @@
-::: {align="center"}
 # VendorPilot AI
 
-### Evidence-backed supplier onboarding and risk review, powered by agentic workflows.
+**An AI-powered supplier document review system that helps businesses check supplier documents, find problems, and make safer approval decisions.**
 
-**Turn supplier documents into structured, review-ready decisions ---
-with traceable evidence and human oversight.**
+VendorPilot AI takes supplier documents (such as business registration documents and insurance certificates), reads the information, checks it against simple business rules, and helps a reviewer decide what to do next.
 
-`<br/>`{=html}
+The important idea is that **AI does the reading, Python checks the rules, and a human makes important decisions when needed.**
 
-[![Python](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![Next.js](https://img.shields.io/badge/Frontend-Next.js%2015-000000?logo=next.js&logoColor=white)](https://nextjs.org/)
-[![LangGraph](https://img.shields.io/badge/Orchestration-LangGraph-1C3C3C)](https://www.langchain.com/langgraph)
-[![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![License:
-MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![Python](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688?logo=fastapi&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-15-000000?logo=next.js&logoColor=white)
+![LangGraph](https://img.shields.io/badge/LangGraph-Workflow-1C3C3C)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Database-4169E1?logo=postgresql&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-`<br/>`{=html}
+---
 
-**[Overview](#-overview) · [Architecture](#-architecture) ·
-[Workflow](#-agentic-workflow) · [Evaluation](#-evaluation-results) ·
-[Setup](#-getting-started) · [API](#-api-reference)**
-:::
+## Table of Contents
 
-------------------------------------------------------------------------
+- [What is VendorPilot AI?](#what-is-vendorpilot-ai)
+- [Why did I build it?](#why-did-i-build-it)
+- [How does it work?](#how-does-it-work)
+- [Main features](#main-features)
+- [Technology used](#technology-used)
+- [How the system is organized](#how-the-system-is-organized)
+- [How the AI workflow works](#how-the-ai-workflow-works)
+- [Evaluation results](#evaluation-results)
+- [Run the project on your computer](#run-the-project-on-your-computer)
+- [API endpoints](#api-endpoints)
+- [What is included in this version?](#what-is-included-in-this-version)
+- [What is not included yet?](#what-is-not-included-yet)
+- [Known limitations](#known-limitations)
+- [Important technical decisions](#important-technical-decisions)
+- [Possible future improvements](#possible-future-improvements)
+- [License](#license)
+- [Acknowledgements](#acknowledgements)
+
+---
 
-## 📌 Project Status
+## What is VendorPilot AI?
 
-> **Working MVP.** The core supplier-document review workflow is
-> implemented, including extraction, deterministic validation,
-> conditional routing, human approval, persistent checkpoints, and
-> evaluation tooling. Authentication and production deployment are
-> outside the scope of this MVP.
+Supplier onboarding is the process of checking a company before doing business with it.
 
-## 🎯 Overview
+A business may need to collect and check documents such as:
 
-Supplier onboarding often involves collecting business registration
-documents, insurance certificates, tax forms, and security
-questionnaires; manually transferring information into systems; checking
-expiry dates; and coordinating approvals.
+- Business registration certificates
+- Insurance certificates
+- Tax documents
+- Security questionnaires
 
-VendorPilot AI is an evidence-backed workflow designed to make that
-process more structured and auditable.
+Doing all these checks manually can take time. Someone has to open each document, find the important information, check dates, identify missing details, and ask the right person to approve the supplier.
 
-Upload a supplier PDF and VendorPilot:
+VendorPilot AI helps with this process.
 
-1.  Extracts structured information from the document.
-2.  Associates extracted fields with page-level evidence.
-3.  Validates the information using deterministic Python rules.
-4.  Routes cases according to findings and severity.
-5.  Pauses for human review when a critical finding or extraction error
-    requires attention.
-6.  Records the review decision and audit history.
+You upload a supplier PDF. The system reads it, collects important information, checks for possible problems, and shows the results in a review screen.
 
-The goal is not simply to summarize a document. It is to manage a
-supplier review case through a controlled workflow while keeping
-consequential decisions under human authority.
+For example, it can help identify:
 
-### Why VendorPilot?
+- A missing business registration number
+- An expired insurance certificate
+- Information that the AI is not confident about
 
-A basic LLM call can summarize a PDF, but a supplier review workflow
-also needs to:
+It also shows which page of the original PDF contains the information. This helps the reviewer check the result instead of simply trusting the AI.
 
--   Track a case across multiple documents.
--   Preserve state while waiting for a human decision.
--   Link findings to the source document and page.
--   Resume work after a server restart.
--   Handle model-provider failures through a fallback path.
--   Keep business validation separate from probabilistic model output.
-
-VendorPilot addresses these needs through a stateful LangGraph workflow,
-deterministic validation, PostgreSQL persistence, and a browser-based
-review experience.
-
-## ✨ Key Capabilities
-
-  -----------------------------------------------------------------------
-  Capability                          What it does
-  ----------------------------------- -----------------------------------
-  Supplier case management            Create and manage supplier review
-                                      cases
-
-  PDF document intake                 Upload multiple supplier PDF
-                                      documents
-
-  Structured extraction               Extract document fields into
-                                      structured data
-
-  Evidence traceability               Associate extracted fields and
-                                      findings with source pages
-
-  Document classification             Identify supported document types
-
-  Deterministic validation            Detect missing required fields and
-                                      expired documents
-
-  Confidence checks                   Flag extractions below the
-                                      configured confidence threshold
-
-  Conditional routing                 Send clean cases to automatic
-                                      approval and critical cases to
-                                      human review
-
-  Human-in-the-loop review            Pause the workflow until a reviewer
-                                      approves or rejects
-
-  Persistent workflow state           Resume interrupted workflows from
-                                      PostgreSQL checkpoints
-
-  Live progress                       Stream workflow updates to the
-                                      frontend using Server-Sent Events
-                                      (SSE)
-
-  PDF review workspace                Open the original PDF and jump to a
-                                      finding's relevant page
-
-  Provider fallback                   Retry Gemini and fall back to Groq
-                                      when required
-
-  Diagnostics                         Display provider, token usage, and
-                                      latency information
-
-  Evaluation tooling                  Run a 20-case benchmark and compare
-                                      baseline and agentic results
-  -----------------------------------------------------------------------
-
-## 🧱 Architecture
-
-VendorPilot separates the user interface, API, agent workflow, and
-persistence responsibilities.
-
-``` mermaid
-flowchart TB
-    subgraph Frontend["Frontend — Next.js 15 + Tailwind CSS"]
-        UI["Dashboard<br/>Upload + Case List"]
-        CW["Case Workspace<br/>Findings + PDF Viewer"]
-        RP["Review Panel<br/>Approve / Reject"]
-        DX["Diagnostics<br/>Tokens + Latency"]
-    end
-
-    subgraph Backend["Backend — FastAPI"]
-        API["REST API<br/>Cases / Jobs / Decisions"]
-        SSE["SSE Stream<br/>Live Progress"]
-        BG["Background Runner<br/>asyncio.create_task"]
-    end
-
-    subgraph Intelligence["Agent Workflow — LangGraph + LangChain"]
-        EX["Extract Node<br/>Gemini → Groq fallback"]
-        VA["Validate Node<br/>Deterministic Python"]
-        RT{"Route<br/>Critical?"}
-        HR["Human Review<br/>interrupt + resume"]
-        AA["Auto Approve"]
-    end
-
-    subgraph Persistence["Persistence"]
-        PG[("PostgreSQL<br/>Cases, Findings, Audit,<br/>Jobs, Metrics")]
-        OBJ[("Object Storage<br/>Original PDFs")]
-        CKPT[("LangGraph<br/>Checkpoints")]
-    end
-
-    UI --> API
-    CW --> API
-    RP --> API
-    DX --> API
-    API --> BG
-    BG --> EX
-    EX --> VA
-    VA --> RT
-    RT -->|Critical finding or error| HR
-    RT -->|No critical findings| AA
-    HR --> PG
-    AA --> PG
-    VA --> PG
-    BG --> CKPT
-    BG --> SSE
-    SSE --> UI
-    API --> PG
-    API --> OBJ
-```
-
-### Responsibility boundaries
-
-  -----------------------------------------------------------------------
-  Component               Owns                    Does not own
-  ----------------------- ----------------------- -----------------------
-  **LangGraph**           Workflow sequencing,    HTTP transport and
-                          state, routing,         business-record
-                          pause/resume            persistence
-
-  **LangChain**           Model calls, structured Workflow logic and
-                          output, provider        validation rules
-                          abstraction             
-
-  **FastAPI**             HTTP API, job           Business rules and
-                          orchestration, SSE,     model calls
-                          permissions             
-
-  **PostgreSQL**          Durable case records,   LangGraph workflow
-                          findings, audit history checkpoint state
-
-  **Object storage**      Original PDF files      Other application data
-  -----------------------------------------------------------------------
-
-**Important persistence distinction:** LangGraph's checkpointer stores
-workflow state, while PostgreSQL stores business records. These serve
-different purposes. A resumed graph restores its execution state from a
-checkpoint; the case, findings, and final decision remain business
-records in PostgreSQL.
-
-## 🛠️ Tech Stack
-
-  -----------------------------------------------------------------------
-  Layer                   Technology              Purpose
-  ----------------------- ----------------------- -----------------------
-  AI orchestration        LangGraph 1.x           Stateful workflow,
-                                                  checkpointing,
-                                                  conditional routing,
-                                                  human-in-the-loop via
-                                                  `interrupt()`
-
-  Model abstraction       LangChain               Structured output with
-                                                  Pydantic schemas and
-                                                  provider portability
-
-  Primary model           Gemini 2.5 Flash        Document understanding
-                                                  and JSON-schema
-                                                  structured output
-
-  Fallback model          Groq                    Alternative model
-                          `openai/gpt-oss-20b`    provider and fallback
-                                                  execution
-
-  Backend                 FastAPI                 Async API, Pydantic
-                                                  validation, SSE,
-                                                  OpenAPI documentation
-
-  Database                Neon PostgreSQL         Persistent application
-                                                  data
-
-  Checkpointer            `AsyncPostgresSaver`    Persistent workflow
-                                                  checkpoints
-
-  Frontend                Next.js 15 App Router   Dashboard and
-                                                  interactive review
-                                                  workspace
-
-  Styling                 Tailwind CSS            Frontend styling
-
-  PDF viewer              `react-pdf`             Browser-based PDF
-                                                  rendering and page
-                                                  navigation
-
-  Deployment targets      Fly.io, Vercel, Neon    Platforms identified
-                                                  for deployment
-  -----------------------------------------------------------------------
-
-The stack was selected with free-tier availability in mind. Provider
-fallback is part of the design so the workflow can continue when the
-primary model provider is unavailable or rate-limited.
-
-## 🤖 Agentic Workflow
-
-The workflow is intentionally split into specialist stages. Not every
-stage needs an LLM: extraction uses a model, while validation uses
-deterministic Python logic.
-
-``` mermaid
+## Why did I build it?
+
+A normal AI chatbot can read a PDF and give you a summary. But a real supplier review process needs more than a summary.
+
+For example:
+
+- What happens if a document is missing important information?
+- What happens if an insurance certificate has expired?
+- How can a reviewer check where the AI got its information?
+- What happens if the system stops while waiting for approval?
+- What happens if the AI provider is temporarily unavailable?
+
+VendorPilot was built to explore these problems.
+
+The system does not allow the AI to make every decision by itself. It uses clear Python rules to check information and sends cases to a human when further review is needed.
+
+## How does it work?
+
+Here is the process in simple terms:
+
+1. **Upload a document:** The user uploads a supplier PDF.
+2. **Read the document:** The AI reads the PDF and extracts important information.
+3. **Check the information:** Python checks whether required details are missing or documents have expired.
+4. **Decide what happens next:** The system checks the results and chooses the next step.
+5. **Ask for human review when needed:** If there is a serious problem or an extraction error, the workflow pauses.
+6. **Record the decision:** The reviewer approves or rejects the case. The system saves the decision and its history.
+
+A clean case can follow the automatic approval path. A case with a critical finding or extraction error is sent for human review.
+
+## Main features
+
+| Feature | Simple explanation |
+|---|---|
+| Supplier case management | Create and manage supplier review cases. |
+| PDF upload | Upload supplier documents in PDF format. |
+| Information extraction | Read important details from uploaded documents. |
+| Document classification | Identify the type of document. |
+| Page references | Show which PDF page contains the extracted information or finding. |
+| Missing information checks | Find required details that are not present. |
+| Expiry date checks | Identify documents that have expired. |
+| Confidence checks | Flag information when the model's confidence score is below the configured limit. |
+| Automatic routing | Send clean cases to the automatic approval path. |
+| Human review | Pause cases that need a person to check them. |
+| Approve or reject | Allow a reviewer to submit a decision. |
+| Saved workflow progress | Continue a paused workflow after a server restart. |
+| Live progress updates | Show the user what the system is doing. |
+| PDF review screen | Open the original document and move to a relevant page. |
+| AI provider fallback | Try Groq if Gemini cannot complete a request. |
+| Diagnostics | Show information such as the AI provider, token usage, and processing time. |
+| Evaluation | Test the system using a set of sample supplier cases. |
+
+## Technology used
+
+Here is a list of the main technologies and what each one does in this project.
+
+| Technology | What it does in VendorPilot |
+|---|---|
+| **Python 3.12+** | Main programming language for the backend and validation rules. |
+| **FastAPI** | Receives requests from the frontend and provides the backend API. |
+| **Next.js 15** | Builds the website that users interact with. |
+| **Tailwind CSS** | Controls the appearance and layout of the website. |
+| **LangGraph** | Controls the steps of the AI workflow, including pauses and restarts. |
+| **LangChain** | Helps the application communicate with AI models and handle structured responses. |
+| **Gemini 2.5 Flash** | Main AI model used to read supplier documents. |
+| **Groq – `openai/gpt-oss-20b`** | Backup AI model used when Gemini is unavailable or cannot be used. |
+| **PostgreSQL** | Saves supplier cases, findings, decisions, and other application records. |
+| **Neon** | Provides the PostgreSQL database hosting used by the project. |
+| **AsyncPostgresSaver** | Saves the AI workflow's progress so it can continue later. |
+| **react-pdf** | Displays PDF documents in the browser. |
+| **PyMuPDF** | Extracts text from PDF documents. |
+
+The project documentation also identifies Fly.io and Vercel as deployment targets. Deployment is not included in the current MVP status described here.
+
+## How the system is organized
+
+The project has four main parts.
+
+### 1. Frontend — the website
+
+The frontend is built with Next.js and Tailwind CSS.
+
+It is where the user can:
+
+- Upload supplier documents.
+- View supplier cases.
+- See the extracted information and findings.
+- Open the original PDF.
+- Review a case and approve or reject it.
+- View processing and diagnostic information.
+
+### 2. Backend — the communication layer
+
+The backend is built with FastAPI.
+
+It receives requests from the website and handles tasks such as:
+
+- Accepting PDF uploads.
+- Creating and retrieving supplier cases.
+- Starting the AI workflow.
+- Receiving approval or rejection decisions.
+- Sending progress updates to the website.
+
+### 3. AI workflow — the processing layer
+
+The AI workflow is managed by LangGraph and LangChain.
+
+It:
+
+- Reads supplier documents using an AI model.
+- Checks the extracted information.
+- Decides whether a case can continue automatically or needs human review.
+- Pauses and resumes when a reviewer needs to make a decision.
+
+### 4. Database and file storage — the saving layer
+
+PostgreSQL stores the application's important records, such as cases, findings, decisions, audit history, jobs, and metrics.
+
+The original PDF files are stored separately from those records.
+
+LangGraph also saves its workflow progress using a PostgreSQL checkpointer. This is what allows a paused workflow to continue later.
+
+### Architecture diagram
+
+```mermaid
 flowchart TD
-    START([Start]) --> EX["Extract"]
-    EX --> VA["Validate"]
-    VA --> RT{"Route"}
-    RT -->|"Critical finding or error"| HR["Human Review"]
-    RT -->|"No critical findings"| AA["Auto Approve"]
-    HR --> DEC["Reviewer decision"]
-    DEC --> END([End])
-    AA --> END
+    USER["User"] --> WEB["Website - Next.js"]
+    WEB --> API["Backend API - FastAPI"]
+    API --> WORKER["Workflow Runner"]
+    WORKER --> AI["Read document - Gemini or Groq"]
+    AI --> CHECK["Check information - Python rules"]
+    CHECK --> ROUTE{"Does the case need review?"}
+    ROUTE -->|"No"| AUTO["Automatic approval path"]
+    ROUTE -->|"Yes"| HUMAN["Wait for human review"]
+    HUMAN --> DECISION["Approve or reject"]
+    AUTO --> DB[("PostgreSQL")]
+    DECISION --> DB
+    API --> FILES[("PDF file storage")]
+    WORKER --> SAVED["Saved workflow progress - PostgreSQL checkpointer"]
+    WORKER --> UPDATES["Live progress updates - SSE"]
+    UPDATES --> WEB
 ```
 
-### 1. Extract node --- LLM
+### What is the difference between the database and the workflow checkpoint?
 
--   Uses Gemini with
-    `with_structured_output(ExtractedDocument, method="json_schema")`.
--   Retries `503 UNAVAILABLE` errors with exponential backoff, for up to
-    three attempts.
--   Falls back to Groq if Gemini continues to fail.
--   Converts the fallback provider's flat output into the nested
-    `ExtractedDocument` structure.
--   Returns page-level evidence for extracted fields.
+These two things have different jobs:
 
-### 2. Validate node --- deterministic Python
+- **Application database:** Saves information about the supplier case, findings, decisions, and audit history.
+- **Workflow checkpoint:** Saves where the AI workflow stopped, so it can continue from that point later.
 
-Validation does not use an LLM. It applies explicit business rules:
+For example, if a case is waiting for a manager's approval and the server restarts, the checkpoint helps the workflow continue when the manager submits a decision.
 
-  -----------------------------------------------------------------------
-  Finding code                        Condition
-  ----------------------------------- -----------------------------------
-  `MISSING_REQUIRED_FIELD`            A required field for the document
-                                      type is null
+## How the AI workflow works
 
-  `EXPIRED_DOCUMENT`                  The document's expiry date is in
-                                      the past
+The workflow has four main stages.
 
-  `LOW_CONFIDENCE`                    The model's confidence score is
-                                      below `0.7`
-  -----------------------------------------------------------------------
+### Stage 1: Read the document
 
-Findings are written to PostgreSQL immediately.
+The system sends the document text to the AI model.
 
-### 3. Conditional routing
+Gemini is the primary model. The AI extracts information and returns it in a structured format that the application can use.
 
-The workflow routes a case to human review when:
+The extracted information includes page-level evidence so the reviewer can check the original document.
 
--   At least one finding has `severity == "critical"`, or
--   The extraction step has an error.
+If Gemini has a temporary problem, the system retries the request. If it still cannot complete the request, the system can use Groq as a fallback.
 
-Otherwise, the case follows the automatic-approval path.
+### Stage 2: Check the information
 
-### 4. Human review --- pause and resume
+After extraction, Python checks the information using predefined rules.
 
--   The human-review node calls LangGraph's `interrupt()` with the
-    findings payload.
--   LangGraph pauses execution and saves a checkpoint.
--   A reviewer submits a decision through
-    `POST /api/v1/cases/{id}/decision`.
--   The graph resumes using `Command(resume="approved")` or
-    `Command(resume="rejected")`.
--   The system writes an audit-log entry and updates the case status.
+The current checks include:
 
-### Why use `interrupt()`?
+| Check | What it means |
+|---|---|
+| `MISSING_REQUIRED_FIELD` | A required detail is missing from the document. |
+| `EXPIRED_DOCUMENT` | The document's expiry date is in the past. |
+| `LOW_CONFIDENCE` | The model's confidence score is below `0.7`. |
 
-The reviewer may need minutes or hours to make a decision. The
-checkpoint preserves the workflow state during that pause. If the server
-restarts while a case is waiting for review, the workflow can resume
-from its saved checkpoint rather than starting over. This avoids the
-need for a separate workflow state machine for this pause/resume
-behavior.
+These checks are handled by Python, not by asking the AI to make another decision.
 
-### Provider failure handling
+This makes the rules easier to test and understand.
 
-When Gemini returns `503 UNAVAILABLE`, the system retries with
-exponential backoff. If the primary provider remains unavailable, the
-workflow falls back to Groq. A circuit breaker disables Gemini for the
-rest of the run after a daily-limit error, avoiding repeated calls that
-are likely to fail.
+### Stage 3: Choose the next step
 
-## 📊 Evaluation Results
+After checking the information, the workflow decides what should happen.
 
-The system was evaluated against a **20-case golden dataset** spanning
-six scenario families.
+- If there is a critical finding, the case goes to human review.
+- If document extraction has an error, the case goes to human review.
+- If there are no critical findings, the case follows the automatic approval path.
 
-### Dataset composition
+### Stage 4: Wait for a human decision
 
-  ----------------------------------------------------------------------------------
-  Scenario family                  Cases Test condition   Expected outcome
-  ---------------- --------------------- ---------------- --------------------------
-  Valid                                4 Clean document,  `auto_approved`
-  registration                           all fields       
-                                         present          
+When human review is required, the workflow pauses.
 
-  Valid insurance                      3 Valid insurance  `auto_approved`
-                                         document and     
-                                         expiry           
+The reviewer can check the findings and the original PDF, then approve or reject the case.
 
-  Expired                              4 Expiry date in   `human_review` +
-  insurance                              the past         `EXPIRED_DOCUMENT`
+Once the reviewer submits a decision, the workflow continues and the application saves the decision in its records.
 
-  Missing field                        3 Registration     `human_review` +
-                                         number absent    `MISSING_REQUIRED_FIELD`
+### Why does the workflow need to pause and resume?
 
-  Low confidence                       3 Irregular        `human_review` +
-                                         spacing in       `LOW_CONFIDENCE`
-                                         document         
+Imagine a supplier case needs a manager's approval. The manager may not be available immediately.
 
-  Prompt injection                     3 Document         `auto_approved`, no tool
-                                         contains "ignore execution
-                                         previous         
-                                         instructions"    
-  ----------------------------------------------------------------------------------
+The system must remember the case and wait. It should not start the whole process again when the manager returns.
 
-### Benchmark metrics
+LangGraph's `interrupt()` and checkpoint features allow VendorPilot to pause the workflow and continue it later.
 
-The recorded run below was a **Groq-only run**, because the Gemini quota
-was exhausted during the run.
+## Evaluation results
 
-  Metric                  Baseline: single LLM call   Agentic: LangGraph workflow
-  --------------------- --------------------------- -----------------------------
-  Extraction accuracy                  20/20 (100%)                  20/20 (100%)
-  Finding precision                             ---                          1.00
-  Finding recall                                ---                          0.70
-  Finding F1                                    ---                          0.82
-  Outcome accuracy                              ---                   14/20 (70%)
+The project was tested using a sample dataset containing **20 fictional supplier cases**.
 
-### Provider usage during the run
+The dataset covers six types of situations.
 
-  Pipeline     Gemini   Groq fallback   Failed
-  ---------- -------- --------------- --------
-  Baseline          0              20        0
-  Agentic           0              20        0
+### Test dataset
 
-### Interpreting the results
+| Test scenario | Number of cases | What is being tested? |
+|---|---:|---|
+| Valid registration | 4 | A registration document with all required information. |
+| Valid insurance | 3 | An insurance document with a valid expiry date. |
+| Expired insurance | 4 | An insurance document with an expiry date in the past. |
+| Missing field | 3 | A registration document without its registration number. |
+| Low confidence | 3 | A document with irregular spacing. |
+| Prompt injection | 3 | A document containing the text "ignore previous instructions". |
+| **Total** | **20** | |
 
-**Why did baseline and agentic extraction accuracy match?**
+### Recorded evaluation results
 
-The baseline measures extraction only. The agentic pipeline adds
-validation and routing after extraction. In this 20-case dataset, both
-pipelines achieved the same extraction score; the agentic workflow's
-additional value is in finding detection and outcome routing.
+The following results came from a **Groq-only test run**. Gemini's daily quota had been exhausted during the run.
 
-**Why is finding recall 0.70?**
+| Measurement | Simple baseline | VendorPilot workflow |
+|---|---:|---:|
+| Information extraction accuracy | 20/20 (100%) | 20/20 (100%) |
+| Finding precision | — | 1.00 |
+| Finding recall | — | 0.70 |
+| Finding F1 score | — | 0.82 |
+| Final outcome accuracy | — | 14/20 (70%) |
 
-The `LOW_CONFIDENCE` rule triggers only when the model's confidence
-score is below `0.7`. During this run, `gpt-oss-20b` returned `0.8`
-uniformly, so the low-confidence findings were not triggered. This is a
-documented limitation of the current evaluation, not a result to conceal
-or tune away.
+### What do these numbers mean?
 
-**Why are there no Gemini calls in the results?**
+- **Extraction accuracy (100%):** Both approaches extracted the expected information in all 20 test cases.
+- **Precision (1.00):** The findings that the workflow raised were correct in this evaluation.
+- **Recall (0.70):** The workflow found 70% of the findings that it was expected to detect.
+- **F1 score (0.82):** This combines precision and recall into one measurement.
+- **Outcome accuracy (70%):** The workflow produced the expected final outcome in 14 out of 20 cases.
 
-Gemini's free-tier daily quota was exhausted during the run. The circuit
-breaker routed all 20 cases to Groq. This run demonstrates the fallback
-path under quota pressure; it is not a Gemini-primary benchmark.
+### Why was the recall not higher?
 
-> **Evaluation note:** These figures describe the recorded run and
-> should be updated if a later benchmark produces different results. Do
-> not present them as results from a different provider configuration.
+The low-confidence rule only creates a finding when the confidence score is below `0.7`.
 
-## 🚀 Getting Started
+During this test, the Groq model returned a confidence score of `0.8` for all cases. Because of this, the system did not identify the low-confidence test cases as expected.
 
-### Prerequisites
+This is a known limitation of the current setup.
 
-Before running VendorPilot locally, prepare:
+### Why was Gemini not used in this test?
 
--   Python 3.12+
--   Node.js 20+
--   A Google AI Studio API key
--   A Groq API key
--   A Neon PostgreSQL database
+Gemini's free-tier daily quota was exhausted during the evaluation. The system then used Groq for all 20 cases.
 
-### 1. Clone the repository
+This test shows that the fallback mechanism worked when the primary provider could not be used. It should not be described as a Gemini-primary evaluation.
 
-``` bash
+> **Important:** These are the results recorded in the project documentation. If you run the evaluation again and get different results, update this section before publishing.
+
+## Run the project on your computer
+
+Follow these steps to run VendorPilot locally.
+
+### Requirements
+
+Install or prepare the following:
+
+- Python 3.12 or later
+- Node.js 20 or later
+- Google AI Studio API key
+- Groq API key
+- Neon PostgreSQL database
+
+You will need API keys and a database connection string before starting the application.
+
+### Step 1: Download the project
+
+Open a terminal and run:
+
+```bash
 git clone https://github.com/Damith-Darshana/vendorPilotAI.git
 cd vendorPilotAI
 ```
 
-### 2. Set up the backend
+### Step 2: Set up the backend
 
-Create and activate a Python virtual environment:
+Create a Python virtual environment:
 
-``` bash
+```bash
 python -m venv .venv
+```
 
-# macOS / Linux
+Activate it.
+
+**macOS / Linux:**
+
+```bash
 source .venv/bin/activate
+```
 
-# Windows
+**Windows:**
+
+```powershell
 .venv\Scripts\activate
 ```
 
-Install the Python dependencies:
+Install the required Python packages:
 
-``` bash
+```bash
 pip install -r requirements.txt
 ```
 
-Create your environment file:
+### Step 3: Add your environment settings
 
-``` bash
+Create a copy of the example environment file:
+
+**macOS / Linux:**
+
+```bash
 cp .env.example .env
 ```
 
-On Windows, copy the file using:
+**Windows PowerShell:**
 
-``` powershell
+```powershell
 Copy-Item .env.example .env
 ```
 
-Configure the values in `.env`:
+Open `.env` and add your own values:
 
-``` env
+```env
 GOOGLE_API_KEY=your_google_api_key
 GROQ_API_KEY=your_groq_api_key
 DATABASE_URL=your_postgresql_connection_string
 ```
 
-Initialize the database:
+Replace the example values with your actual keys and database connection string.
 
-``` bash
+**Keep your API keys private. Never upload your `.env` file or secret keys to GitHub.**
+
+### Step 4: Prepare the database
+
+Run:
+
+```bash
 python scripts/init_db.py
 ```
 
-Start the FastAPI server:
+This runs the project's database initialization script.
 
-``` bash
+### Step 5: Start the backend
+
+Run:
+
+```bash
 uvicorn src.api.main:app --reload --port 8000
 ```
 
-The backend will be available at:
+The backend should now be available at:
 
--   API: `http://localhost:8000`
--   Interactive API documentation: `http://localhost:8000/docs`
--   Health check: `http://localhost:8000/health`
+- API: `http://localhost:8000`
+- API documentation: `http://localhost:8000/docs`
+- Health check: `http://localhost:8000/health`
 
-### 3. Set up the frontend
+Keep this terminal running.
 
-Open a separate terminal and run:
+### Step 6: Start the frontend
 
-``` bash
+Open another terminal.
+
+Move into the frontend folder:
+
+```bash
 cd frontend
+```
+
+Install the frontend packages:
+
+```bash
 npm install
+```
+
+Start the website:
+
+```bash
 npm run dev
 ```
 
-The frontend will be available at:
+Open the website at:
 
 `http://localhost:3000`
 
-### 4. Generate sample evaluation data
+### Step 7: Generate sample test data
 
-To generate the 20 fictional supplier cases and their ground truth:
+To create the 20 fictional supplier cases used for evaluation, run this from the project root:
 
-``` bash
+```bash
 python scripts/generate_golden_dataset.py
 ```
 
-### 5. Run the evaluation benchmark
+### Step 8: Run the evaluation
 
-``` bash
+From the project root, run:
+
+```bash
 python scripts/run_evaluation.py
 ```
 
-The evaluation report is written to:
+The evaluation report will be saved here:
 
-``` text
+```text
 data/evaluation_report.md
 ```
 
-## 📡 API Reference
+## API endpoints
 
-The backend exposes the following endpoints.
+The frontend communicates with the backend through API endpoints.
 
-### Cases
+An API endpoint is simply an address that the frontend or another application can call to perform an action or request information.
 
-  -------------------------------------------------------------------------------
-  Method                  Endpoint                        Description
-  ----------------------- ------------------------------- -----------------------
-  `POST`                  `/api/v1/cases`                 Upload a PDF and create
-                                                          a case
-
-  `GET`                   `/api/v1/cases`                 List all cases, newest
-                                                          first
-
-  `GET`                   `/api/v1/cases/{id}`            Get case details,
-                                                          findings, and job
-                                                          status
-
-  `GET`                   `/api/v1/cases/{id}/document`   Stream the original PDF
+### Supplier cases
 
-  `POST`                  `/api/v1/cases/{id}/decision`   Submit a human decision
-                                                          and resume the graph
-  -------------------------------------------------------------------------------
+| Method | Endpoint | What it does |
+|---|---|---|
+| `POST` | `/api/v1/cases` | Upload a PDF and create a supplier case. |
+| `GET` | `/api/v1/cases` | Get the list of supplier cases. |
+| `GET` | `/api/v1/cases/{id}` | Get information about one case, its findings, and job status. |
+| `GET` | `/api/v1/cases/{id}/document` | Get the original PDF document. |
+| `POST` | `/api/v1/cases/{id}/decision` | Submit an approval or rejection decision. |
 
-### Jobs and diagnostics
-
-  ----------------------------------------------------------------------------------
-  Method                  Endpoint                           Description
-  ----------------------- ---------------------------------- -----------------------
-  `GET`                   `/api/v1/jobs/{id}`                Get job status
-
-  `GET`                   `/api/v1/jobs/{id}/stream`         Receive workflow
-                                                             progress through SSE
-
-  `GET`                   `/api/v1/jobs/{id}/metrics`        Get token usage and
-                                                             latency for a job
-
-  `GET`                   `/api/v1/jobs/by-case/{case_id}`   Get the latest job for
-                                                             a case
+### Jobs and progress
 
-  `GET`                   `/health`                          Health check
-  ----------------------------------------------------------------------------------
+| Method | Endpoint | What it does |
+|---|---|---|
+| `GET` | `/api/v1/jobs/{id}` | Check the status of a processing job. |
+| `GET` | `/api/v1/jobs/{id}/stream` | Receive live workflow updates. |
+| `GET` | `/api/v1/jobs/{id}/metrics` | View token usage and processing time. |
+| `GET` | `/api/v1/jobs/by-case/{case_id}` | Find the latest job for a supplier case. |
+| `GET` | `/health` | Check whether the backend is responding. |
 
-### Server-Sent Events
-
-The job stream emits events as the workflow progresses.
+### Live progress events
 
-  -----------------------------------------------------------------------------------------
-  Event                   Data                                      When it is emitted
-  ----------------------- ----------------------------------------- -----------------------
-  `job_started`           `{job_id, case_id}`                       When a job begins
+The backend uses Server-Sent Events (SSE) to send updates to the website while a job is running.
 
-  `progress`              `{stage: "extracting" \| "validating"}`   During graph execution
+| Event | Meaning |
+|---|---|
+| `job_started` | A new job has started. |
+| `progress` | The workflow is currently extracting or checking information. |
+| `hitl_required` | The workflow is waiting for a human decision. |
+| `job_completed` | The workflow has finished. |
+| `error` | An unrecoverable error occurred. |
+| `heartbeat` | A small message sent every 30 seconds to keep the connection alive. |
 
-  `hitl_required`         `{message, case_id}`                      When the graph pauses
-                                                                    for human review
+## What is included in this version?
 
-  `job_completed`         `{final_status, case_id}`                 When the graph finishes
+The following features are listed as implemented in the project documentation.
 
-  `error`                 `{message}`                               On unrecoverable
-                                                                    failure
+- [x] Create and manage supplier review cases.
+- [x] Upload multiple supplier PDF documents.
+- [x] Extract structured information from documents.
+- [x] Classify document types.
+- [x] Link findings to source page numbers.
+- [x] Detect missing required information.
+- [x] Detect expired documents.
+- [x] Check low-confidence extractions, with a known limitation.
+- [x] Run the workflow using LangGraph.
+- [x] Pause the workflow for human review.
+- [x] Resume the workflow after a reviewer submits a decision.
+- [x] Approve or reject cases through the API and website.
+- [x] Save case information, findings, and audit history in PostgreSQL.
+- [x] Save workflow progress so paused cases can continue later.
+- [x] Send live progress updates to the website.
+- [x] Display the original PDF in the browser.
+- [x] Navigate to a relevant PDF page from a finding.
+- [x] Show supplier cases on the dashboard.
+- [x] Upload cases using drag and drop.
+- [x] Show processing progress.
+- [x] Display AI provider, token usage, and processing time.
+- [x] Fall back from Gemini to Groq when needed.
+- [x] Run a 20-case evaluation benchmark and compare it with a baseline.
 
-  `heartbeat`             `{}`                                      Every 30 seconds to
-                                                                    keep the connection
-                                                                    alive
-  -----------------------------------------------------------------------------------------
+## What is not included yet?
 
-## ✅ Implementation Checklist
+These features are intentionally outside the current MVP.
 
-The following capabilities are identified as implemented in the project
-documentation:
+| Feature | Current situation |
+|---|---|
+| User login and permissions | Not implemented. A production version would need authentication and role-based access. |
+| Multiple-company support | The database design includes a `tenant_id` field, but the current MVP runs as a single tenant. |
+| Email integration | Automatic document intake and approval emails are not implemented. |
+| Highlighting evidence inside PDFs | The viewer can open the correct page, but it does not draw a box around the exact text. |
+| Request more information | The current review decision supports approval and rejection. |
+| Detailed token usage for each workflow step | The evaluation runner records token usage. The API workflow records overall job metrics, not separate token usage for every node. |
 
--   [x] Create and manage supplier review cases
--   [x] Upload multiple supplier PDF documents
--   [x] Extract structured fields with page-level evidence
--   [x] Classify document types
--   [x] Link findings to source page numbers
--   [x] Detect missing required fields
--   [x] Detect expired documents
--   [x] Detect low-confidence extractions, with a documented limitation
--   [x] Route cases through a LangGraph workflow with conditional edges
--   [x] Pause for human review and resume with `Command(resume=...)`
--   [x] Approve or reject through the API and UI
--   [x] Persist case status, findings, and audit history in PostgreSQL
--   [x] Checkpoint workflow state so interrupted cases can resume
--   [x] Stream workflow progress to the frontend using SSE
--   [x] Serve the original PDF to the browser
--   [x] Jump to the relevant PDF page when a finding is selected
--   [x] Display a case list on the dashboard
--   [x] Upload a case from the browser using drag and drop
--   [x] Show live progress during upload and processing
--   [x] Display provider, token, and latency information on a
-    diagnostics page
--   [x] Fall back from Gemini to Groq on provider errors or quota
-    exhaustion
--   [x] Run an automated 20-case evaluation benchmark with a baseline
-    comparison
+These are not features that should be considered complete. They may be added in a future version.
 
-## 🚧 Deliberately Out of Scope
+## Known limitations
 
-These items are intentionally deferred in the MVP. They are scope
-decisions, not claims that the capabilities are already available.
+Every project has limitations. The following are known limitations of this version.
 
-  -----------------------------------------------------------------------
-  Item                                Current scope
-  ----------------------------------- -----------------------------------
-  Authentication and role-based       Not implemented in the MVP. The
-  access control                      project design identifies FastAPI
-                                      with OAuth2 / Auth0 as a possible
-                                      production approach.
+### 1. Gemini may be unavailable
 
-  Multi-tenant isolation              The schema design includes a
-                                      `tenant_id` column, but the MVP
-                                      runs as a single tenant.
+Gemini can return a `503 UNAVAILABLE` error when the service is overloaded.
 
-  Email integration                   Inbound email and outbound approval
-                                      requests are deferred.
+VendorPilot retries the request and then tries Groq as a backup. If both providers fail or their limits are reached, the job can fail.
 
-  PDF evidence highlighting           The viewer can navigate to the
-                                      relevant page, but does not draw
-                                      bounding boxes around evidence
-                                      snippets.
+### 2. Low-confidence detection needs improvement
 
-  Request additional information      The current decision endpoint
-                                      supports approval and rejection;
-                                      `request_info` is deferred.
+The system checks whether the model's confidence score is below `0.7`.
 
-  Per-node token tracing in the API   The evaluation runner captures
-  flow                                token usage, while the API flow
-                                      records latency and a single
-                                      `JobMetrics` row rather than
-                                      tracing each graph node separately.
-  -----------------------------------------------------------------------
+In the recorded Groq evaluation, the model returned `0.8` for every case. This meant the low-confidence rule did not identify the test cases as expected.
 
-## ⚠️ Known Limitations
+### 3. No document caching
 
-Transparency about current limitations is part of the project.
+If the same PDF is uploaded again, the system performs a new extraction.
 
-### Gemini availability and quota
+There is no caching system to recognize that the document has already been processed.
 
-Gemini 2.5 Flash may return `503 UNAVAILABLE` under load. The system
-retries with exponential backoff and falls back to Groq. If both
-providers are unavailable or exhausted, the job fails and the frontend
-receives an error event.
+### 4. Scanned PDFs are not fully supported
 
-The evaluation run documented here used Groq exclusively because the
-Gemini free-tier quota had been exhausted.
+The current PDF text extraction uses PyMuPDF.
 
-### Low-confidence detection
+It is designed for extracting available PDF text. It does not currently provide full support for:
 
-The `LOW_CONFIDENCE` rule triggers only below `0.7`. In the recorded
-Groq run, `gpt-oss-20b` returned `0.8` uniformly. As a result, the
-low-confidence findings were not detected, contributing to the finding
-recall of `0.70`.
+- Scanned documents that need OCR.
+- Complex multi-column document layouts.
+- Handwritten information.
 
-### No caching layer
+### 5. Authentication is not implemented
 
-Each upload triggers a fresh extraction. A content-hash cache could
-avoid reprocessing identical documents, but caching is not implemented
-in this MVP.
+The current MVP does not include a complete user login and permission system.
 
-### Basic PDF text extraction
+It should not be treated as a production-ready system for handling real supplier documents until appropriate security, access control, and deployment measures are added.
 
-The system uses PyMuPDF to extract raw text. The current implementation
-does not handle:
+## Important technical decisions
 
--   Scanned PDFs that require OCR.
--   Complex multi-column layouts.
--   Handwritten text.
+This section explains some of the main technical choices in simple terms.
 
-The low-confidence evaluation scenario simulates irregular spacing; it
-does not represent a full OCR-failure evaluation.
+### Why use LangGraph?
 
-## 🧠 Design Decisions
+VendorPilot needs to remember what it was doing when a case is waiting for human approval.
 
-### Why LangGraph instead of a simple chain?
+A simple sequence of AI calls is not enough for this requirement.
 
-A simple chain does not provide the workflow control needed here.
-VendorPilot needs conditional routing based on findings, a pause while a
-reviewer makes a decision, and the ability to resume after a server
-restart. LangGraph's `interrupt()` and checkpointing model supports that
-stateful workflow.
+LangGraph provides a way to:
 
-### Why `AsyncPostgresSaver` instead of `InMemorySaver`?
+- Run tasks in a defined order.
+- Choose different paths depending on the results.
+- Pause when a human decision is required.
+- Continue later from the saved progress.
 
-An in-memory checkpointer loses workflow state when the server restarts.
-A reviewer may return to a paused case much later, so the workflow needs
-persistent checkpoint storage.
+### Why save workflow progress in PostgreSQL?
 
-### Why a dedicated validation node?
+If workflow progress were stored only in memory, a server restart could cause the application to lose the information needed to continue a paused case.
 
-The LLM extracts information; Python validates it. Deterministic rules
-are testable, auditable, and inexpensive. For example, checking whether
-an expiry date is earlier than today's date is more predictable as a
-Python rule than as an LLM judgment.
+The project uses `AsyncPostgresSaver` to save that progress in PostgreSQL.
 
-### Why a flat schema for Groq?
+### Why use Python rules instead of asking AI to validate everything?
 
-The documented Groq model configuration does not reliably return nested
-Pydantic objects in strict JSON-schema mode. The fallback response is
-adapted from a flat structure into the nested `ExtractedDocument` shape.
-This keeps downstream validation independent of the provider.
+AI is useful for reading documents and extracting information. But some checks have clear answers.
 
-### Why a circuit breaker for Gemini?
+For example, Python can compare an expiry date with today's date and identify whether it has passed.
 
-After a daily quota error, repeatedly calling Gemini for every
-subsequent case would waste time on requests likely to fail. The circuit
-breaker disables Gemini for the rest of the run and routes requests to
-Groq.
+This is easier to test and gives the same result for the same input. That is why VendorPilot uses AI for extraction and Python for its defined validation rules.
 
-### Why is authentication not included in the MVP?
+### Why use both Gemini and Groq?
 
-Authentication is important before production deployment, but the MVP
-focuses on demonstrating the document-review workflow and its agentic
-behavior. Authentication and authorization are explicitly deferred
-rather than represented as implemented features.
+The system uses Gemini as its main model and Groq as a backup.
 
-## 🗺️ Potential Next Steps
+AI services can have usage limits or temporary failures. Having a second provider gives the workflow another option when the first provider cannot complete a request.
 
-The following are possible follow-up improvements, not current MVP
-capabilities:
+The application also uses a circuit breaker. In simple terms, after a daily quota error, it stops repeatedly trying Gemini during that run and uses the fallback provider instead.
 
--   Add authentication and role-based access control before production
-    use.
--   Implement tenant isolation.
--   Add email-based document intake and approval notifications.
--   Add evidence bounding-box extraction for PDF highlighting.
--   Add a request-information review decision.
--   Improve confidence calibration and evaluate it across providers.
--   Add OCR support for scanned documents.
--   Add content-hash caching to avoid duplicate extraction.
--   Expand per-node tracing and observability.
+### Why does the Groq response need to be converted?
 
-## 📄 License
+The project uses a structured data format for extracted documents.
 
-This project is licensed under the MIT License. See the
-[LICENSE](LICENSE) file for details.
+The configured Groq model may return the information in a flatter format. The application converts that response into the structure expected by the rest of the workflow.
 
-## 🙏 Acknowledgements
+This means the validation step can work with the same data structure regardless of which provider performed the extraction.
 
--   [LangGraph](https://www.langchain.com/langgraph) for stateful
-    workflow primitives.
--   [Google AI Studio](https://aistudio.google.com/) for Gemini model
-    access.
--   [Groq](https://groq.com/) for fallback model access.
--   [Neon](https://neon.tech/) for PostgreSQL hosting.
--   The original project brief for defining the workflow requirements
-    and evidence-backed review goals.
+## Possible future improvements
 
-------------------------------------------------------------------------
+These are ideas for future versions. They are not presented as completed features.
 
-::: {align="center"}
-**VendorPilot AI** · Evidence-backed decisions. Human-controlled
-workflows.
-:::
+- Add user login and role-based permissions.
+- Add support for multiple companies with proper data separation.
+- Add email integration for document intake and approval notifications.
+- Highlight the exact evidence text inside PDF pages.
+- Allow reviewers to request additional information.
+- Improve confidence scoring and test it with more documents.
+- Add OCR support for scanned PDFs.
+- Avoid processing the same document repeatedly through caching.
+- Add more detailed monitoring for each workflow step.
+- Run and publish updated evaluation results using both AI providers.
+
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+## Acknowledgements
+
+- [LangGraph](https://www.langchain.com/langgraph) for helping manage the workflow.
+- [LangChain](https://www.langchain.com/) for model integration and structured output.
+- [Google AI Studio](https://aistudio.google.com/) for Gemini access.
+- [Groq](https://groq.com/) for fallback model access.
+- [Neon](https://neon.tech/) for PostgreSQL hosting.
+- [FastAPI](https://fastapi.tiangolo.com/) for the backend framework.
+- [Next.js](https://nextjs.org/) for the frontend framework.
+
+---
+
+**VendorPilot AI — Helping people review supplier documents with clearer evidence and better control.**
