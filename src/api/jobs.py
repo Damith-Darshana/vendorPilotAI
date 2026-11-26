@@ -30,6 +30,8 @@ async def run_case_job(job_id: str, case_id: str, file_path: str, checkpointer):
             db.commit()
 
         await queue.put({"event": "job_started", "data": {"job_id": job_id, "case_id": case_id}})
+        await queue.put({"event":"progress","data":{"stage":"extracting"}})
+
 
         # Build graph using the app's checkpointer
         app = build_graph(checkpointer=checkpointer)
@@ -38,14 +40,29 @@ async def run_case_job(job_id: str, case_id: str, file_path: str, checkpointer):
 
         #Capture the latency around the full graph invocation
         import time
-        start_time = time.time()
 
         try:
-            result = await app.ainvoke(
-                {"file_path": file_path, "case_id": case_id},
-                config=config,
-            )
+
+            print(f"[JOB {job_id}] Starting graph for case {case_id}")
+            start_time = time.time()
+            try:
+                result = await asyncio.wait_for(
+                app.ainvoke(
+                    {"file_path": file_path, "case_id": case_id},
+                    config=config,
+                    
+                ),
+                timeout = 300.0,
+                )
+                print(f"[JOB] ainvoke completed")
+            except asyncio.TimeoutError:
+                print(f"[JOB] ainvoke TIMED OUT after 30s — graph never started")
+                await queue.put({"event": "error", "data": {"message": "Graph startup timed out"}})
+
             latency_ms = int((time.time() - start_time)*1000)
+            print(f"[JOB {job_id}] Graph finished in {latency_ms:.1f}s. Interrupt: {bool(result.get('__interrupt__'))}")
+            
+            await queue.put({"event":"progress","data":{"stage":"validating"}})
 
             usage = result.get("usage_metadata")
             if usage:
@@ -69,7 +86,11 @@ async def run_case_job(job_id: str, case_id: str, file_path: str, checkpointer):
                 })
                 if job:
                     job.status = "paused"
-                    db.commit()
+
+                case = db.query(Case).filter(Case.id == case_id).first()
+                if case:
+                    case.status = CaseStatus.NEEDS_REVIEW
+                db.commit()
             else:
                 final_status = result.get("final_status", "completed")
                 await queue.put({
@@ -78,7 +99,16 @@ async def run_case_job(job_id: str, case_id: str, file_path: str, checkpointer):
                 })
                 if job:
                     job.status = "completed"
-                    db.commit()
+            case = db.query(Case).filter(Case.id == case_id).first()
+            if case:
+                if final_status == "auto_approved":
+                    case.status = CaseStatus.APPROVED
+                elif final_status == "human_approved":
+                    case.status = CaseStatus.APPROVED
+                elif final_status == "human_rejected":
+                    case.status = CaseStatus.REJECTED
+            
+            db.commit()
 
         except Exception as e:
            

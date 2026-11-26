@@ -1,5 +1,6 @@
 import uuid
 import json
+import sys
 import asyncio
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
@@ -13,18 +14,33 @@ from src.db.database import SessionLocal
 from src.db.models import Case, Job, Finding, Document as DocumentModel,JobMetrics
 
 from contextlib import asynccontextmanager
+from psycopg_pool import AsyncConnectionPool
+from psycopg.rows import dict_row
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from src.config import settings
 from pydantic import BaseModel
 from typing import Optional
 
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize checkpointer once at startup
-    async with AsyncPostgresSaver.from_conn_string(settings.DATABASE_URL) as checkpointer:
+    # Use a pool instead of a single connection
+    async with AsyncConnectionPool(
+        conninfo=settings.DATABASE_URL,
+        min_size=1,
+        max_size=5,
+        kwargs={"autocommit": True, "row_factory": dict_row},
+        check=AsyncConnectionPool.check_connection,  # Replaces stale connections
+        open=False,
+    ) as pool:
+        await pool.open(wait=True, timeout=15)
+        checkpointer = AsyncPostgresSaver(pool)
         await checkpointer.setup()
         app.state.checkpointer = checkpointer
         yield
+
 
 app = FastAPI(title="VendorPilot AI API", lifespan=lifespan)
 # Add CORS middleware right after app initialization
@@ -171,6 +187,27 @@ async def submit_decision(case_id: str, body: DecisionRequest):
     return {"status": "resuming", "job_id": job_id, "case_id": case_id}
 
 
+@app.get("/api/v1/cases")
+async def list_cases():
+    """Return all cases ordered by creation date,newest first."""
+    db = SessionLocal()
+    try:
+        cases = db.query(Case).order_by(Case.created_at.desc()).all()
+        return [
+            {
+
+            "case_id":c.id,
+            "supplier_name":c.supplier_name,
+            "status":c.status.value if hasattr(c.status,"value") else c.status,
+            "created_at":c.created_at.isoformat(),
+            } for c in cases
+        ]
+    finally:
+        db.close()
+
+
+
+
 @app.get("/api/v1/cases/{case_id}", response_model=CaseDetailResponse)
 async def get_case(case_id: str):
     """Retrieve case details including findings."""
@@ -228,6 +265,23 @@ async def get_case_document(case_id:str):
     finally:
         db.close()
 
+
+@app.get("/api/v1/jobs/by-case/{case_id}")
+async def get_job_by_case(case_id: str):
+    """Return the most recent job for a case."""
+    db = SessionLocal()
+    try:
+        job = (
+            db.query(Job)
+            .filter(Job.case_id == case_id)
+            .order_by(Job.created_at.desc())
+            .first()
+        )
+        if not job:
+            raise HTTPException(status_code=404, detail="No job found for this case")
+        return {"job_id": job.id, "status": job.status}
+    finally:
+        db.close()
 
 @app.get("/api/v1/jobs/{job_id}/metrics")
 async def get_job_metrics(job_id: str):

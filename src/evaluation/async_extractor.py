@@ -32,18 +32,16 @@ EXTRACTION_PROMPT = ChatPromptTemplate.from_messages([
             ("human", "Document text:\n{document_text}"),
     ])
 
-def _build_gemini():
-  return ChatGoogleGenerativeAI(
-    model = "gemini-3.8-flash",
+_gemini_model = ChatGoogleGenerativeAI(
+    model = "gemini-3.5-flash-lite",
     temperature=0,
     api_key = os.getenv("GOOGLE_API_KEY"),
 
   ).with_structured_output(ExtractedDocument,method="json_schema")
 
-def _build_groq():
-  #llama-3.3-70b-versatile does not support json_schema strict mode
-  return ChatGroq(
-    model= "openai/gpt-oss-20b",
+
+_groq_model =ChatGroq(  
+    model= "openai/gpt-oss-20b",    #llama-3.3-70b-versatile does not support json_schema strict mode
     temperature = 0,
     api_key = os.getenv("GROQ_API_KEY"),
   ).with_structured_output(FlatExtractedDocument,method="json_schema", strict=True)
@@ -72,13 +70,17 @@ def _flat_to_nested(flat:FlatExtractedDocument) -> dict:
   }
 
 
-async def extract_async(file_path:str,provider:str="gemini") -> tuple[dict,dict]:
+async def extract_async(file_path:str,provider:str="gemini",max_retries:int = 3) -> tuple[dict,dict]:
   """
     Returns Two dicts: 
          1- extracted_dict:Extract structured fields from a PDF. returns Nested dict matching ExtractedDocument shape, a dict(JSON-safe)
          2- usage_metadata_dict : contains input_tokens, output_tokens, total_tokens, model_name
   """
+ 
+
   import pymupdf
+  import random
+  import time
 
   doc = pymupdf.open(file_path)
   full_text  = ""
@@ -92,21 +94,41 @@ async def extract_async(file_path:str,provider:str="gemini") -> tuple[dict,dict]
     raise ValueError(f"No text extracted from {file_path}")
 
   if provider == "gemini":
-    model = _build_gemini()
+    model = _gemini_model
     chain = EXTRACTION_PROMPT | model
-    result = await chain.ainvoke({"document_text":full_text})
-    extracted = result.model_dump(mode="json")
-    usage = _extract_usage(result,"gemini")
-    return extracted, usage
-  
-  elif provider == "groq":
-    model = _build_groq()
-    chain = EXTRACTION_PROMPT | model
-    result = await chain.ainvoke({"document_text":full_text})
-    extracted = _flat_to_nested(result)
-    usage = _extract_usage(result,"groq")
-    return extracted, usage
 
+    last_exception = None
+    for attempt in range(max_retries):
+      try:
+        result = await chain.ainvoke({"document_text":full_text})
+        extracted = result.model_dump(mode="json")
+        usage = _extract_usage(result,"gemini")
+        return extracted, usage
+      except Exception as exc:
+        error_str = str(exc)
+        # only retry on 503/ overloaded/ unavailable
+        if "503" in error_str or "overloaded" in error_str.lower() or "UNAVAILABLE" in error_str:
+          last_exception = exc
+          if attempt < max_retries-1:
+            delay = (2**attempt)+ random.uniform(0,1)
+            print(f"[GEMINI] 503 overloaded, retrying in {delay:.1f}s (attempt {attempt + 1}/{max_retries})")
+            time.sleep(delay)
+            continue
+        raise last_exception if last_exception else exc
+        # print(f"\n[FAILED with] - {type(exc).__name__}: {exc}")
+    raise last_exception if last_exception else RuntimeError("Gemini extraction failed")
+ 
+  elif provider == "groq":
+    model = _groq_model
+    chain = EXTRACTION_PROMPT | model
+    try:
+      result = await chain.ainvoke({"document_text":full_text})
+      extracted = _flat_to_nested(result)
+      usage = _extract_usage(result,"groq")
+      return extracted, usage
+    except Exception as exc:
+      print(f"\n[GROQ FAILED with] - {type(exc).__name__}: {exc}")
+  
   else:
     raise ValueError(f"Unknown Provider : {provider}")
 
@@ -119,5 +141,6 @@ def _extract_usage(llm_result,provider:str) ->dict:
     "input_tokens": meta.get("input_tokens"),
     "output_tokens": meta.get("output_tokens"),
     "total_tokens": meta.get("total_tokens"),
-    
+
   }
+

@@ -1,3 +1,4 @@
+import asyncio
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.checkpoint.memory import InMemorySaver
@@ -8,7 +9,7 @@ from src.graph.state import VendorPilotState
 from src.extractors.document_extractor import extract_document
 from src.validators.document_validator import validate_document
 from src.schemas import FindingSeverity
-
+from src.evaluation.async_extractor import extract_async
 
 # ---------------------------------------------------------
 # Nodes
@@ -16,13 +17,15 @@ from src.schemas import FindingSeverity
 
 async def extract_node(state: VendorPilotState) -> dict:
   """Node 1 : Extract structured data from PDF."""
-  import asyncio
-  from src.evaluation.async_extractor import extract_async
+ 
+  print(f"[EXTRACT] Starting extraction for {state.get("file_path")}")
 
   try:
-    # doc = extract_document(state["file_path"],use_fallback=True)
-    extracted,usage = await extract_async(state["file_path"],provider="gemini")
-    
+    # Run Gemini's sync extraction in a thread pool to avoid async hang
+    extracted,usage = await asyncio.to_thread(
+      extract_async, state["file_path"]
+    )
+    print(f"[EXTRACT] Gemini succeeded")
     return {
        "extracted_doc":extracted,
        "usage_metadata":usage,
@@ -30,17 +33,18 @@ async def extract_node(state: VendorPilotState) -> dict:
     }
   except Exception as e:
     # Fallback to Groq if Gemini fails
+    print(f"[EXTRACT] Gemini failed :  {e}")
     try:
       extracted, usage = await extract_async(state["file_path"], provider="groq")
-      
+      print(f"[EXTRACT] Groq fallback succeeded")
       return {
           "extracted_doc": extracted,
           "usage_metadata": usage,
           "error": None,
       }
     except Exception as e2:
-        print(f"error bro : {e2}")
-        return {"error": e2}
+        print(f"[EXTRACT] Groq also failed : {e2}")
+        return {"error": str(e2)}
 
     
 from src.db.database import SessionLocal
@@ -189,8 +193,8 @@ def build_graph(checkpointer):
   builder = StateGraph(VendorPilotState)
 
   #Add nodes
-  builder.add_node("extract",extract_node)
-  builder.add_node("validate",validate_node)
+  builder.add_node("extract",extract_node,timeout=90)
+  builder.add_node("validate",validate_node,timeout=90)
   builder.add_node("auto_approve",auto_approve_node)
   builder.add_node("human_review",human_review_node)
 
